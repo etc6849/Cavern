@@ -109,8 +109,8 @@ public class Truehdd : ExternalConverter {
         if (source.Container != Container.NotContainer) {
             status("Extracting the selected TrueHD track...");
             input = workspace.FilePath("source.thd");
-            source.Track.Source.Seek(0);
-            using (ExtractTrackFromContainer extractor = new(source.Track, File.Create(input))) {
+            using (FileStream output = File.Create(input))
+            using (ExtractTrackFromContainer extractor = new(source.Track, output)) {
                 while (extractor.Process()) {
                 }
             }
@@ -165,8 +165,8 @@ public class Truehdd : ExternalConverter {
         tempTrack = Path.Combine(folder, $"_extracted-{Guid.NewGuid():N}.thd");
         if (needTempTrack) {
             UpdateStatusMessage(language["PrgRB"]);
-            source.Track.Source.Seek(0);
-            using ExtractTrackFromContainer extractor = new(source.Track, File.Create(tempTrack));
+            using FileStream output = File.Create(tempTrack);
+            using ExtractTrackFromContainer extractor = new(source.Track, output);
             while (extractor.Process()) {
                 // Extraction in progress
             }

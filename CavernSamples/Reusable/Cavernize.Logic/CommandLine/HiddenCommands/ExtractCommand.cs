@@ -1,5 +1,6 @@
 ﻿using Cavern.Format.Common;
 
+using Cavern.Format.Operations;
 using Cavernize.Logic.Models;
 
 namespace Cavernize.Logic.CommandLine.HiddenCommands;
@@ -28,12 +29,16 @@ sealed class ExtractCommand : UnsafeCommand {
         }
 
         Track track = tracks[index];
-        using FileStream output = File.Create(args[offset + 1]);
+        string destination = Path.GetFullPath(args[offset + 1]);
+        if (string.Equals(destination, Path.GetFullPath(app.LoadedFile.Path),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) {
+            throw new CommandException("Extraction cannot overwrite the source container.");
+        }
+        using FileStream output = File.Create(destination);
+        using ExtractTrackFromContainer extractor = new(track, output);
         string fileName = Path.GetFileName(args[offset + 1]);
         Console.WriteLine($"Extracting track {index} to \"{fileName}\"...");
-        while (track.IsNextBlockAvailable()) {
-            byte[] block = track.ReadNextBlock();
-            output.Write(block, 0, block.Length);
+        while (extractor.Process()) {
         }
         throw new CommandProcessingCanceledException();
     }

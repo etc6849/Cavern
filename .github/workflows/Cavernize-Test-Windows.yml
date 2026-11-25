@@ -1,9 +1,9 @@
-name: Cavernize V4 Windows release
+name: Cavernize V4 TrueHD fix Windows build
 
 on:
   push:
     branches:
-      - feature/cavernize-v4-integrated-analysis
+      - feature/cavernize-v4-truehd-fix
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   package:
-    if: github.ref == 'refs/heads/feature/cavernize-v4-integrated-analysis'
+    if: github.ref == 'refs/heads/feature/cavernize-v4-truehd-fix'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -29,7 +29,7 @@ jobs:
           $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
           dotnet publish .\CavernSamples\CavernizeGUI\CavernizeGUI.csproj -c Release -r win-x64 --self-contained true -o $publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
-          Copy-Item -LiteralPath 'LICENSE.md', 'docs/Cavernize PCM sample peaks.md', 'docs/Cavernize V4.md', 'docs/Cavernize V4 checklist.md' -Destination $publish
+          Copy-Item -LiteralPath 'LICENSE.md', 'docs/Cavernize PCM sample peaks.md', 'docs/Cavernize V4.md', 'docs/Cavernize V4 checklist.md', 'docs/Cavernize TrueHD extraction investigation.md' -Destination $publish
 
       - name: Publish Cavernize CLI
         shell: pwsh
@@ -88,6 +88,22 @@ jobs:
             throw
           }
 
+      - name: Compare Cavern TrueHD extraction with MKVToolNix
+        shell: pwsh
+        run: |
+          $env:CAVERN_LACE_FIXTURE = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/atmos.thd'
+          $env:CAVERN_TEST_MKVEXTRACT = (Get-Command mkvextract -ErrorAction Stop).Source
+          $env:CAVERN_TEST_TRUEHDD = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD/truehdd.exe'
+          $log = dotnet test .\Tests\Test.Cavern.Format\Test.Cavern.Format.csproj -c Release 2>&1
+          $code = $LASTEXITCODE
+          $log | Write-Host
+          if ($code -ne 0) {
+            $detail = ($log | Select-String 'Failed |Error Message:|Exception|error ' -Context 0,2 | Out-String).Trim()
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=TrueHD extraction regression::$detail"
+            throw "Format tests failed with exit code $code"
+          }
+
       - name: Run Windows GUI regression and analysis parity tests
         shell: pwsh
         run: |
@@ -109,7 +125,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
-          $zip = Join-Path $env:RUNNER_TEMP 'Cavernize-V4-win-x64-Release.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'Cavernize-V4-TrueHD-Fix-win-x64.zip'
           [System.IO.Compression.ZipFile]::CreateFromDirectory($publish, $zip)
           $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
           try {
@@ -137,10 +153,10 @@ jobs:
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: Cavernize-V4-win-x64-Release
+          name: Cavernize-V4-TrueHD-Fix-win-x64
           path: |
-            ${{ runner.temp }}/Cavernize-V4-win-x64-Release.zip
-            ${{ runner.temp }}/Cavernize-V4-win-x64-Release.zip.sha256
+            ${{ runner.temp }}/Cavernize-V4-TrueHD-Fix-win-x64.zip
+            ${{ runner.temp }}/Cavernize-V4-TrueHD-Fix-win-x64.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -170,7 +186,7 @@ jobs:
             }
           }
           [System.IO.Compression.ZipFile]::ExtractToDirectory($outerZip, $destination)
-          $fileName = 'Cavernize-V4-win-x64-Release.zip'
+          $fileName = 'Cavernize-V4-TrueHD-Fix-win-x64.zip'
           $original = Join-Path $env:RUNNER_TEMP $fileName
           $downloaded = Join-Path $destination $fileName
           $expected = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash

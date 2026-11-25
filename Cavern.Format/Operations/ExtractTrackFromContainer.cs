@@ -2,6 +2,7 @@
 using System.IO;
 
 using Cavern.Format.Common;
+using Cavern.Format.Container;
 
 namespace Cavern.Format.Operations {
     /// <summary>
@@ -24,6 +25,9 @@ namespace Cavern.Format.Operations {
         public ExtractTrackFromContainer(Track track, Stream output) {
             this.track = track;
             this.output = output;
+            if (track.Source is MatroskaReader matroska) {
+                matroska.PrepareExtraction(track);
+            }
         }
 
         /// <summary>

@@ -52,6 +52,21 @@ namespace Cavern.Format.Container {
         public MatroskaReader(string path) : base(path) => ReadSkeleton();
 
         /// <summary>
+        /// Start whole-track extraction in file order, independently of playback seeking or track probing.
+        /// </summary>
+        internal void PrepareExtraction(Track track) {
+            MatroskaTrack selected = (MatroskaTrack)track;
+            if (segments.Length != 1) {
+                throw new NotSupportedException("Whole-track extraction requires a single Matroska segment.");
+            }
+            if (selected.EncodedBlocks) {
+                throw new NotSupportedException("The selected Matroska track uses block compression or encryption. Use MKVToolNix to extract it.");
+            }
+            selected.lastCluster = 0;
+            selected.lastBlock = 0;
+        }
+
+        /// <summary>
         /// The following block of the track is rendered and available.
         /// </summary>
         public override bool IsNextBlockAvailable(int track) => GetBlock(track) != null;
@@ -249,6 +264,13 @@ namespace Cavern.Format.Container {
 
                 MatroskaTree source = entries[track];
                 entry.ID = source.GetChildValue(reader, MatroskaTree.Segment_Tracks_TrackEntry_TrackNumber);
+                MatroskaTree encodings = source.GetChild(reader, MatroskaTree.Segment_Tracks_TrackEntry_ContentEncodings);
+                if (encodings != null) {
+                    foreach (MatroskaTree encoding in encodings.GetChildren(reader, MatroskaTree.ContentEncoding)) {
+                        // An omitted scope defaults to 1 (block frames).
+                        entry.EncodedBlocks |= (encoding.GetChildValue(reader, MatroskaTree.ContentEncodingScope) & 1) != 0;
+                    }
+                }
                 entry.Name = source.GetChildUTF8(reader, MatroskaTree.Segment_Tracks_TrackEntry_Name);
                 entry.Language = source.GetChildUTF8(reader, MatroskaTree.Segment_Tracks_TrackEntry_Language);
                 if (string.IsNullOrEmpty(entry.Language)) {

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.IO;
+using Cavern.Format.Utilities;
 
 namespace Cavern.Format.Container.Matroska {
     /// <summary>
@@ -36,30 +37,35 @@ namespace Cavern.Format.Container.Matroska {
             if (blocks != null) {
                 return blocks;
             }
-            MemoryStream stream = new MemoryStream(source.GetRawData(reader));
-            blocks = new List<Block>();
-            long end = stream.Length - 2; // Safety barrier, a byte might remain, but a 2 byte child is impossible
+            source.Position(reader);
+            if (source.Length > reader.Length - reader.Position) {
+                throw new EndOfStreamException("Truncated Matroska cluster.");
+            }
+            MemoryStream stream = new MemoryStream(reader.ReadAllBytes(checked((int)source.Length)), writable: false);
+            List<Block> parsed = new List<Block>();
+            long end = stream.Length;
             while (stream.Position < end) {
-                MatroskaTree child = new MatroskaTree(stream);
+                MatroskaTree child = MatroskaTree.TryCreate(stream, end) ??
+                    throw new InvalidDataException("An element extends beyond the Matroska cluster.");
                 long continueFrom = stream.Position;
 
                 // Block groups (Matroska v1)
                 if (child.Tag == MatroskaTree.Segment_Cluster_BlockGroup) {
                     MatroskaTree[] blocksHere = child.GetChildren(stream, MatroskaTree.Segment_Cluster_BlockGroup_Block);
                     for (int i = 0; i < blocksHere.Length; ++i) {
-                        blocks.Add(new Block(stream, blocksHere[i]));
+                        parsed.Add(new Block(stream, blocksHere[i]));
                     }
                 }
 
                 // Simple blocks (Matroska v2)
                 else if (child.Tag == MatroskaTree.Segment_Cluster_SimpleBlock) {
-                    blocks.Add(new Block(stream, child));
+                    parsed.Add(new Block(stream, child));
                 }
 
                 stream.Position = continueFrom;
             }
 
-            return blocks;
+            return blocks = parsed;
         }
     }
 }

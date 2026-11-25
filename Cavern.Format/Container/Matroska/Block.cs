@@ -1,8 +1,8 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 
 using Cavern.Format.Common;
 using Cavern.Format.Utilities;
-using Cavern.Utilities;
 
 namespace Cavern.Format.Container.Matroska {
     /// <summary>
@@ -77,54 +77,96 @@ namespace Cavern.Format.Container.Matroska {
         public Block(Stream reader, MatroskaTree source) {
             source.Position(reader);
             this.reader = reader;
-            long start = reader.Position;
-            Track = VarInt.ReadValue(reader);
-            TimeStamp = reader.ReadInt16BE();
-            flags = (byte)reader.ReadByte();
+            long end = checked(reader.Position + source.Length);
+            if (end > reader.Length) {
+                throw new EndOfStreamException("Truncated Matroska block.");
+            }
+            Track = ReadVint(end);
+            if (Track == 0) {
+                throw new InvalidDataException("Invalid Matroska block track number.");
+            }
+            TimeStamp = (short)((ReadHeaderByte(end) << 8) | ReadHeaderByte(end));
+            flags = (byte)ReadHeaderByte(end);
 
             Lacing lacing = LacingType;
-            if (lacing != Lacing.None) {
-                int x = reader.ReadByte();
-                frameCount = x + 1;
-                frameSizes = new int[frameCount];
-                firstFrame = reader.Position;
-                switch (lacing) {
-                    case Lacing.Xiph:
-                        byte frame = 0;
-                        long totalSize = 0;
-                        while (frame < frameCount - 1) {
-                            byte value;
-                            int sum = 0;
-                            do {
-                                value = (byte)reader.ReadByte();
-                                sum += value;
-                            } while (value == 255);
-                            totalSize += sum;
-                            frameSizes[frame++] = sum;
-                        }
-                        frameSizes[frame] = (int)(source.Length - (reader.Position - start) - totalSize);
-                        break;
-                    case Lacing.FixedSize:
-                        int step = (int)((source.Length - (firstFrame - start)) / frameCount);
-                        for (byte i = 0; i < frameCount; ++i) {
-                            frameSizes[i] = step;
-                        }
-                        break;
-                    case Lacing.EBML:
-                        frameSizes[0] = (int)VarInt.ReadValue(reader);
-                        long last = -frameSizes[0];
-                        for (int i = 1; i < frameCount - 1; ++i) {
-                            frameSizes[i] = frameSizes[i - 1] + (int)VarInt.ReadSignedValue(reader);
-                            last -= frameSizes[i];
-                        }
-                        frameSizes[frameCount - 1] = (int)(last + source.Length - (reader.Position - start));
-                        break;
+            frameCount = lacing == Lacing.None ? 1 : ReadHeaderByte(end) + 1;
+            frameSizes = new int[frameCount];
+            if (lacing != Lacing.None && frameCount == 1) {
+                throw new InvalidDataException("A Matroska lace must contain multiple frames.");
+            }
+
+            long knownSize = 0;
+            if (lacing == Lacing.Xiph) {
+                for (int frame = 0; frame < frameCount - 1; frame++) {
+                    long size = 0;
+                    int part;
+                    do {
+                        part = ReadHeaderByte(end);
+                        size += part;
+                    } while (part == 255);
+                    frameSizes[frame] = FrameSize(size);
+                    knownSize += size;
+                }
+            } else if (lacing == Lacing.EBML) {
+                long size = ReadVint(end);
+                frameSizes[0] = FrameSize(size);
+                knownSize = size;
+                for (int frame = 1; frame < frameCount - 1; frame++) {
+                    size += ReadVint(end, signed: true);
+                    frameSizes[frame] = FrameSize(size);
+                    knownSize += size;
+                }
+            }
+
+            // All lace-size metadata precedes the first byte of the payload.
+            firstFrame = reader.Position;
+            payloadLength = FrameSize(end - firstFrame);
+            if (lacing == Lacing.FixedSize) {
+                if (payloadLength % frameCount != 0) {
+                    throw new InvalidDataException("Fixed Matroska lace size is not divisible by the frame count.");
+                }
+                for (int frame = 0; frame < frameCount; frame++) {
+                    frameSizes[frame] = payloadLength / frameCount;
                 }
             } else {
-                firstFrame = reader.Position;
-                frameCount = 1;
-                frameSizes = new[] { (int)(source.Length - (firstFrame - start)) };
+                frameSizes[frameCount - 1] = FrameSize(payloadLength - knownSize);
             }
+        }
+
+        readonly int payloadLength;
+
+        static int FrameSize(long size) {
+            if (size < 0 || size > int.MaxValue) {
+                throw new InvalidDataException("Invalid Matroska frame size.");
+            }
+            return (int)size;
+        }
+
+        int ReadHeaderByte(long end) {
+            int value = reader.Position < end ? reader.ReadByte() : -1;
+            if (value < 0) {
+                throw new EndOfStreamException("Truncated Matroska block header or lace table.");
+            }
+            return value;
+        }
+
+        long ReadVint(long end, bool signed = false) {
+            int first = ReadHeaderByte(end);
+            if (first == 0) {
+                throw new InvalidDataException("Invalid Matroska block variable-length integer.");
+            }
+            int width = 1;
+            int marker = 0x80;
+            while ((first & marker) == 0) {
+                marker >>= 1;
+                width++;
+            }
+
+            long value = first & (marker - 1);
+            for (int i = 1; i < width; i++) {
+                value = (value << 8) | (uint)ReadHeaderByte(end);
+            }
+            return signed ? value - ((1L << (7 * width - 1)) - 1) : value;
         }
 
         /// <summary>
@@ -152,7 +194,7 @@ namespace Cavern.Format.Container.Matroska {
         /// </summary>
         public byte[] GetData() {
             reader.Position = firstFrame;
-            return reader.ReadBytes(frameSizes.Sum());
+            return reader.ReadAllBytes(payloadLength);
         }
 
         /// <summary>
@@ -161,8 +203,8 @@ namespace Cavern.Format.Container.Matroska {
         public byte[][] GetFrames() {
             reader.Position = firstFrame;
             byte[][] result = new byte[frameCount][];
-            for (byte frame = 0; frame < frameCount; ++frame) {
-                result[frame] = reader.ReadBytes(frameSizes[frame]);
+            for (int frame = 0; frame < frameCount; ++frame) {
+                result[frame] = reader.ReadAllBytes(frameSizes[frame]);
             }
             return result;
         }

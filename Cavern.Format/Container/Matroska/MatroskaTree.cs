@@ -45,7 +45,7 @@ namespace Cavern.Format.Container.Matroska {
         MatroskaTree(Stream reader, long endPosition, out bool valid) : base(reader) {
             nextTag = reader.Position;
             end = nextTag + Length;
-            valid = end < endPosition;
+            valid = end >= nextTag && end <= endPosition;
             if (valid) {
                 reader.Position = end;
             }
@@ -57,8 +57,9 @@ namespace Cavern.Format.Container.Matroska {
         /// <param name="reader">Matroska stream to read from</param>
         /// <param name="endPosition">Location of the final byte in the stream (exclusive).</param>
         public static MatroskaTree TryCreate(Stream reader, long endPosition) {
+            long start = reader.Position;
             MatroskaTree result = new MatroskaTree(reader, endPosition, out bool valid);
-            return valid ? result : null;
+            return valid && result.position > start ? result : null;
         }
 
         /// <summary>
@@ -75,10 +76,10 @@ namespace Cavern.Format.Container.Matroska {
             while (nextTag < end) {
                 MatroskaTree subtree = new MatroskaTree(reader);
                 children.Add(subtree);
+                nextTag = reader.Position;
                 if (subtree.Tag == tag) {
                     return subtree;
                 }
-                nextTag = reader.Position;
             }
             return null;
         }
@@ -118,21 +119,19 @@ namespace Cavern.Format.Container.Matroska {
             while (nextTag < end) {
                 MatroskaTree subtree = TryCreate(reader, end);
                 if (subtree == null) {
-                    nextTag = end;
-                    return null;
+                    throw new InvalidDataException("An element extends beyond its Matroska parent.");
                 }
 
                 children.Add(subtree);
+                nextTag = reader.Position;
                 if (subtree.Tag == tag) {
                     indices.Add(tagIndex);
                     if (c++ == index) {
-                        nextTag = reader.Position;
                         return subtree;
                     }
                 }
                 ++tagIndex;
             }
-            nextTag = reader.Position;
             return null;
         }
 
@@ -232,7 +231,8 @@ namespace Cavern.Format.Container.Matroska {
         void ReadAllChildren(Stream reader) {
             reader.Position = nextTag;
             while (reader.Position < end) {
-                MatroskaTree subtree = new MatroskaTree(reader);
+                MatroskaTree subtree = TryCreate(reader, end) ??
+                    throw new InvalidDataException("An element extends beyond its Matroska parent.");
                 children.Add(subtree);
             }
             nextTag = end;

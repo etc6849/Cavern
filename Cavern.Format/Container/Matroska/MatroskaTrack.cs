@@ -16,6 +16,11 @@ namespace Cavern.Format.Container.Matroska {
         internal int lastBlock;
 
         /// <summary>
+        /// Block bytes require content decoding before they can be extracted.
+        /// </summary>
+        internal bool EncodedBlocks { get; set; }
+
+        /// <summary>
         /// Create a track to be placed in the list of a container's tracks.
         /// </summary>
         /// <param name="source">The container containing this track.</param>

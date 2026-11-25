@@ -50,7 +50,11 @@ namespace Cavern.Format.Utilities {
             byte[] bytes = new byte[length];
             int totalRead = 0;
             while (totalRead < length) {
-                totalRead += reader.Read(bytes, totalRead, length - totalRead);
+                int read = reader.Read(bytes, totalRead, length - totalRead);
+                if (read == 0) {
+                    throw new EndOfStreamException();
+                }
+                totalRead += read;
             }
             return bytes;
         }
