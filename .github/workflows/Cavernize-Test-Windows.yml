@@ -44,19 +44,31 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue) -or !(Get-Command ffprobe -ErrorAction SilentlyContinue)) {
-            choco install ffmpeg -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
-            $ffmpeg = Get-ChildItem (Join-Path $env:ChocolateyInstall 'lib') -Directory -Filter 'ffmpeg*' |
-              Get-ChildItem -Recurse -Filter 'ffmpeg.exe' -File |
-              Where-Object { Test-Path -LiteralPath (Join-Path $_.DirectoryName 'ffprobe.exe') } |
-              Select-Object -First 1
-            if (!$ffmpeg) { throw 'FFmpeg and FFprobe were not found in the installed Chocolatey package.' }
-            $ffmpeg.DirectoryName | Add-Content -LiteralPath $env:GITHUB_PATH
+            $ffmpegArchive = Join-Path $env:RUNNER_TEMP 'ffmpeg-8.0.1.zip'
+            $ffmpegRoot = Join-Path $env:RUNNER_TEMP 'ffmpeg-tools'
+            Invoke-WebRequest 'https://github.com/GyanD/codexffmpeg/releases/download/8.0.1/ffmpeg-8.0.1-essentials_build.zip' -OutFile $ffmpegArchive
+            if ((Get-FileHash -LiteralPath $ffmpegArchive).Hash -ne 'e2aaeaa0fdbc397d4794828086424d4aaa2102cef1fb6874f6ffd29c0b88b673') {
+              throw 'FFmpeg checksum mismatch'
+            }
+            Expand-Archive -LiteralPath $ffmpegArchive -DestinationPath $ffmpegRoot
+            $ffmpegBin = Join-Path $ffmpegRoot 'ffmpeg-8.0.1-essentials_build/bin'
+            $ffmpegBin | Add-Content -LiteralPath $env:GITHUB_PATH
+            $env:PATH = "$ffmpegBin;$env:PATH"
           }
-          if (!(Get-Command mkvmerge -ErrorAction SilentlyContinue)) {
+          if (!(Get-Command mkvmerge -ErrorAction SilentlyContinue) -or !(Get-Command mkvextract -ErrorAction SilentlyContinue)) {
             choco install mkvtoolnix -y --no-progress
             if ($LASTEXITCODE -ne 0) { throw 'MKVToolNix installation failed.' }
-            (Join-Path $env:ProgramFiles 'MKVToolNix') | Add-Content -LiteralPath $env:GITHUB_PATH
+            $mkvBin = Join-Path $env:ProgramFiles 'MKVToolNix'
+            $mkvBin | Add-Content -LiteralPath $env:GITHUB_PATH
+            $env:PATH = "$mkvBin;$env:PATH"
+          }
+          foreach ($tool in @('ffmpeg', 'ffprobe', 'mkvmerge', 'mkvextract')) {
+            $command = Get-Command $tool -ErrorAction SilentlyContinue
+            if (!$command) {
+              Write-Host "::error title=Windows verification tool unavailable::$tool"
+              throw "The $tool command could not be located."
+            }
+            Write-Host "$tool found at $($command.Source)"
           }
           $decoderPackage = Join-Path $env:RUNNER_TEMP 'truehdd.zip'
           $decoderFolder = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD'
