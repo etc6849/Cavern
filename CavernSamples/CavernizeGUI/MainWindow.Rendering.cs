@@ -118,7 +118,7 @@ partial class MainWindow {
         ExternalConverterHandler external = new(target, licenceWindow, taskEngine.UpdateProgressBar, taskEngine.UpdateStatus, Dispatcher.Invoke);
         Dispatcher.Invoke(licenceWindow.Close);
         if (external.Failed) {
-            Dispatcher.Invoke(() => Error(status.Text));
+            Dispatcher.Invoke(() => Error(external.Error.Message));
         } else {
             external.Attach(environment.Listener, new DynamicUpmixingSettings(), keepFirstSources);
         }
@@ -128,7 +128,7 @@ partial class MainWindow {
     void RenderMatroska(CavernizeTrack target, string output, RenderTarget layout, bool grade, bool verify, ExportFormat format, string tool) {
         using ExternalConverterHandler external = CreateExternalHandler(target, 0);
         if (external.Failed) {
-            throw new IOException(external.Error.Message, external.Error);
+            return; // CreateExternalHandler already showed the decoder's summary.
         }
         CavernizeTrack rendered = external.GetRenderedTrack(target);
         Progressor progressor = new(rendered.Length, environment.Listener, taskEngine);
@@ -147,6 +147,7 @@ partial class MainWindow {
     void RenderTask(CavernizeTrack target, AudioWriter writer, string finalName) {
         using ExternalConverterHandler external = CreateExternalHandler(target, 0);
         if (external.Failed) {
+            writer?.Dispose();
             return;
         }
 

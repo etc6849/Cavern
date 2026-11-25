@@ -23,3 +23,34 @@ The same genuine 55,410-byte TrueHD/Atmos stream was wrapped three ways and extr
 - Playback `Seek(0)` selects the last block at or before zero. It can skip early packets, including consecutive packets rounded to timestamp zero. The raw CLI extraction command also started at the current cursor after track probing. A whole-track extract must start at the first physical block.
 - BlockGroup metadata such as BlockAdditions is separate from the Block child. It does not explain the demonstrated same-size substitution. MKVToolNix also reverses track content encodings. Cavern's raw extraction cannot safely return compressed, header-stripped, or encrypted bytes as an elementary stream. Multi-segment track identity also requires separate handling.
 - The audio pipeline and PCM calculations are outside this fix. No code from MKVToolNix was copied.
+
+## Decoder diagnostics
+
+Analysis and media export both request the TrueHDD JSON decode summary and write the decoder's messages to a log. An unacceptable exit status, integrity diagnostic, skipped or concealed frames, invalid branch, failed protection check, or incomplete decoded payload rejects the decode. Ordinary informational messages and non-integrity warnings remain in the log. The GUI shows one failure summary with counts, one representative message and the two diagnostic paths. Tests include 4,000 repeated messages and an intentionally damaged access unit processed by the real decoder.
+
+On an analysis failure, look for `truehdd.log` and `truehdd.json` in the reported analysis workspace. On a media-export failure, look for the per-extraction `.truehdd.log` and `.truehdd.json` beside the source. Media placement follows V4. Success removes the diagnostics as part of normal cleanup unless media temporary files were explicitly retained.
+
+## Full-movie Windows check
+
+Extract the test ZIP into a separate directory and leave the V4 baseline installation available. Use MKVToolNix's track identification to find the intended TrueHD track. In the example below, set `$track` to its zero-based **container** track index for raw extraction, including video and other track types in the count.
+
+```powershell
+$movie = 'V:\Movies (UHD)\A Few Good Men.mkv'
+$cli = 'C:\AtmosMetaData\Cavernize-V4-TrueHD-Fix\CLI\CavernizeCLI.exe'
+$work = 'C:\AtmosMetaData\Work'
+$before = (Get-FileHash -Algorithm SHA256 -LiteralPath $movie).Hash
+mkvmerge -J $movie
+$track = 1 # Replace with the selected TrueHD track's container index.
+$reference = Join-Path $work 'A Few Good Men reference.thd'
+$actual = Join-Path $work 'A Few Good Men Cavern.thd'
+mkvextract $movie tracks "${track}:$reference"
+if ($LASTEXITCODE -ne 0) { throw 'MKVToolNix extraction failed' }
+& $cli --input $movie --extract $track $actual
+if ($LASTEXITCODE -ne 0) { throw 'Cavernize extraction failed' }
+if ((Get-FileHash -LiteralPath $reference).Hash -ne (Get-FileHash -LiteralPath $actual).Hash) {
+    throw 'TrueHD extraction hashes differ'
+}
+if ((Get-FileHash -LiteralPath $movie).Hash -ne $before) { throw 'Source hash changed' }
+```
+
+Use an SSD with room for both 4,031,471,458-byte extracts plus the integrated analysis job. Then run `--report-only --quality --verify-peak-events --layout '5.1.6 with top sides' --work-dir $work`. If the movie has multiple TrueHD tracks, pass the matching **zero-based audio** index via `--track` for analysis. Check whether TrueHDD completes cleanly and the post-render CSV reports the full decoded duration. If the hashes differ, preserve both extracts and the decoder logs to locate the first differing block.

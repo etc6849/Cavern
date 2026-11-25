@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-using System.IO.Compression;
-using System.Text.Json;
+﻿using System.IO.Compression;
 
 using Cavern.Format;
 using Cavern.Format.Common;
@@ -119,35 +117,31 @@ public class Truehdd : ExternalConverter {
             }
         }
 
-        status("Decoding the selected TrueHD track with TrueHDD...");
-        string stem = workspace.FilePath("decoded");
-        string summary = workspace.FilePath("truehdd.json");
-        string log = workspace.FilePath("truehdd.log");
-        List<string> arguments = ["decode", "--json", input, "--output-path", stem];
-        if (MeridianLosslessPackingRenderer.ForcedPresentation is int presentation) {
-            arguments.AddRange(["--presentation", presentation.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
-        }
-        MediaTool.Run(executable, workspace.DirectoryPath, arguments, summary, log).GetAwaiter().GetResult();
-        using JsonDocument json = JsonDocument.Parse(File.ReadAllText(summary));
-        JsonElement result = json.RootElement;
-        string version = result.GetProperty("version").GetString();
-        if (result.GetProperty("skippedFrames").GetInt64() != 0 || result.GetProperty("concealedFrames").GetInt64() != 0 ||
-            result.GetProperty("invalidBranches").GetInt64() != 0 || result.GetProperty("samples").GetInt64() <= 0) {
-            throw new IOException("TrueHDD reported skipped, concealed, or missing audio.");
-        }
+        return Decode(executable, workspace.DirectoryPath, input, workspace.FilePath("decoded"),
+            workspace.FilePath("truehdd.json"), workspace.FilePath("truehdd.log"), status);
+    }
 
+    static (CavernizeTrack Track, string Version) Decode(string executable, string workingDirectory, string input,
+        string stem, string summary, string log, Action<string> status) {
+        status($"Decoding with TrueHDD. Decoder log: {log}");
+        TruehddDecode.Result result = TruehddDecode.Run(executable, workingDirectory, input, stem, summary, log);
         string atmos = stem + ".atmos";
         bool foundAtmos = File.Exists(atmos);
-        string decoded = foundAtmos ? atmos : stem + ".caf";
-        AudioReader reader = foundAtmos ? new DolbyAtmosMasterFormatReader(decoded) : AudioReader.Open(decoded);
-        CavernizeTrack track = new(reader, foundAtmos ? Codec.DAMF : Codec.PCM_LE, 0);
-        if (track.Length != result.GetProperty("samples").GetInt64() ||
-            track.SampleRate != result.GetProperty("sampleRate").GetInt32()) {
-            track.Dispose();
-            throw new IOException("The decoded payload does not match the frame count or sample rate reported by TrueHDD.");
+        AudioReader reader = null;
+        CavernizeTrack decoded;
+        try {
+            reader = foundAtmos ? new DolbyAtmosMasterFormatReader(atmos) : AudioReader.Open(stem + ".caf");
+            decoded = new(reader, foundAtmos ? Codec.DAMF : Codec.PCM_LE, 0);
+            if (decoded.Length != result.Samples || decoded.SampleRate != result.SampleRate ||
+                (decoded.Renderer is CoreAudioFormatRenderer caf && caf.HasCompletePcmPayload == false)) {
+                throw new IOException("The decoded payload is incomplete or disagrees with the TrueHDD summary.");
+            }
+        } catch (Exception error) {
+            reader?.Dispose();
+            throw new IOException($"{error.Message}{Environment.NewLine}Decoder log: {log}{Environment.NewLine}Decode summary: {summary}", error);
         }
-        status($"TrueHDD {version} decoded {track.Length:N0} sample frames.");
-        return (track, version);
+        status($"TrueHDD {result.Version} decoded {decoded.Length:N0} sample frames.");
+        return (decoded, result.Version);
     }
 
     /// <summary>
@@ -172,39 +166,12 @@ public class Truehdd : ExternalConverter {
             }
         }
 
-        UpdateStatusMessage(string.Format(language["PrgCo"], "truehdd"));
         string toDecode = needTempTrack ? tempTrack : source.Path;
-        ProcessStartInfo truehdd = new() {
-            FileName = executable,
-            WorkingDirectory = Path.GetDirectoryName(executable),
-            Arguments = $"decode --progress \"{toDecode}\" --output-path \"{tempTrack}\""
-        };
-        if (MeridianLosslessPackingRenderer.ForcedPresentation.HasValue) {
-            truehdd.Arguments += $" --presentation {MeridianLosslessPackingRenderer.ForcedPresentation.Value}";
-        }
-
-        using (Process runner = Process.Start(truehdd)) {
-            runner.WaitForExit();
-            if (runner.ExitCode != 0) {
-                throw new IOException($"TrueHDD exited with code {runner.ExitCode}.");
-            }
-        }
-
+        (track, _) = Decode(executable, Path.GetDirectoryName(executable), toDecode, tempTrack,
+            tempTrack + ".truehdd.json", tempTrack + ".truehdd.log", UpdateStatusMessage);
         if (needTempTrack && !RenderingSettings.KeepTempFiles) {
             File.Delete(tempTrack);
         }
-
-        string atmosPath = tempTrack + ".atmos";
-        AudioReader reader;
-        Codec codec;
-        if (File.Exists(atmosPath)) {
-            reader = new DolbyAtmosMasterFormatReader(atmosPath);
-            codec = Codec.DAMF;
-        } else {
-            reader = AudioReader.Open(tempTrack + ".caf");
-            codec = Codec.PCM_LE;
-        }
-        track = new CavernizeTrack(reader, codec, 0);
         return track;
     }
 
@@ -216,6 +183,8 @@ public class Truehdd : ExternalConverter {
             QFile.DeleteIfExists(tempTrack + ".atmos.audio");
             QFile.DeleteIfExists(tempTrack + ".atmos.metadata");
             QFile.DeleteIfExists(tempTrack + ".caf");
+            QFile.DeleteIfExists(tempTrack + ".truehdd.log");
+            QFile.DeleteIfExists(tempTrack + ".truehdd.json");
         }
     }
 

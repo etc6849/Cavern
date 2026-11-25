@@ -134,10 +134,10 @@ $null = Invoke-Checked $Executable (@('--input', $reference, '--output', $encode
 $null = Invoke-Checked $Executable (@('--input', $mkv, '--output', $native, '-f', 'PCM_Float', '--keep-temp-files',
     '--quality', '--verify-peak-events') + $decoderFlag + $mediaArgs)
 $mediaIntermediates = @(Get-ChildItem -LiteralPath $movieDir -Filter '_extracted-*' -File)
-Assert-Equal $mediaIntermediates.Count 4 'TrueHDD media intermediates beside the original source'
+Assert-Equal $mediaIntermediates.Count 6 'TrueHDD media intermediates beside the original source'
 $null = Invoke-Checked $Executable (@('--input', $mkv, '--output', $encoded, '-f', 'FLAC',
     '--quality', '--verify-peak-events') + $decoderFlag + $mediaArgs)
-Assert-Equal @(Get-ChildItem -LiteralPath $movieDir -Filter '_extracted-*' -File).Count 4 'Media export cleans only its own intermediates'
+Assert-Equal @(Get-ChildItem -LiteralPath $movieDir -Filter '_extracted-*' -File).Count 6 'Media export cleans only its own intermediates'
 $mkaWav = Join-Path $outputDir 'Rendered from MKA.wav'
 $null = Invoke-Checked $Executable (@('--input', $mka, '--output', $mkaWav, '-f', 'PCM_Float', '--quality',
     '--verify-peak-events') + $decoderFlag + $mediaArgs)
@@ -213,6 +213,40 @@ if ($max -le 0 -or [Math]::Abs($max - [double]$summary.post_abs_linear) -gt 0.00
 $null = Invoke-Checked $Executable @('--input', $mkv, '--output', $mkv) 2
 Assert-Equal (Get-FileHash -LiteralPath $mkv).Hash $sourceHash 'Preserved source MKV'
 Assert-Equal (Get-FileHash -LiteralPath $mka).Hash $mkaHash 'Preserved source MKA'
+
+# Change the parity nibble of an access unit without changing its size or the Matroska structure.
+$rawAtmos = [IO.File]::ReadAllBytes($stream)
+$damaged = [IO.File]::ReadAllBytes($mka)
+$offset = 0
+for ($frame = 0; $frame -lt 20; $frame++) {
+    $offset += (([int]$rawAtmos[$offset] * 256 + [int]$rawAtmos[$offset + 1]) -band 0xfff) * 2
+}
+$frameSize = (([int]$rawAtmos[$offset] * 256 + [int]$rawAtmos[$offset + 1]) -band 0xfff) * 2
+$expectedFrame = [Convert]::ToHexString($rawAtmos, $offset, $frameSize)
+$payloadOffset = [Convert]::ToHexString($damaged).IndexOf($expectedFrame, [StringComparison]::Ordinal)
+if ($payloadOffset -lt 0 -or $payloadOffset % 2 -ne 0) { throw 'Fixture access unit could not be located in the MKA' }
+$index = [int]($payloadOffset / 2)
+$damaged[$index] = $damaged[$index] -bxor 0x10
+$corruptDirectory = Join-Path $WorkDirectory 'Corrupt input'
+$null = New-Item -ItemType Directory -Path $corruptDirectory
+$corrupt = Join-Path $corruptDirectory 'Damaged TrueHD.mka'
+[IO.File]::WriteAllBytes($corrupt, $damaged)
+$diagnosticRoot = Join-Path $WorkDirectory 'Decoder failure'
+$failure = Invoke-Checked $Executable (@('--input', $corrupt, '--report-only', '--work-dir', $diagnosticRoot) + $decoderFlag + $side) 1
+if ($failure -notmatch 'Decoder log:' -or $failure -notmatch 'parity check failed' -or $failure.Length -gt 1600) {
+    throw "Missing or unbounded analysis diagnostic: $failure"
+}
+$rawLogs = @(Get-ChildItem -LiteralPath $diagnosticRoot -Recurse -Filter 'truehdd.log' -File)
+Assert-Equal $rawLogs.Count 1 'Full analysis decoder log'
+if (!(Select-String -LiteralPath $rawLogs[0].FullName -Pattern 'parity check failed')) { throw 'Missing raw parity warning' }
+$failedOutput = Join-Path $outputDir 'Failed decode.wav'
+$failure = Invoke-Checked $Executable (@('--input', $corrupt, '--output', $failedOutput) + $decoderFlag + $side) 1
+if ($failure -notmatch 'Decoder log:' -or $failure.Length -gt 1600 -or (Test-Path -LiteralPath $failedOutput)) {
+    throw "Media decode did not fail before output: $failure"
+}
+$mediaLogs = @(Get-ChildItem -LiteralPath $corruptDirectory -Filter '_extracted-*.thd.truehdd.log' -File)
+Assert-Equal $mediaLogs.Count 1 'Media failure diagnostics beside the source'
+if (Test-Path -LiteralPath ([IO.Path]::ChangeExtension($corrupt, '.csv'))) { throw 'A failed decode published a CSV' }
 
 Write-Host 'V4 passed real TrueHD/Atmos MKV and MKA analysis, SSD and export isolation, report protection, and both media routes.'
 exit 0

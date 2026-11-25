@@ -104,6 +104,12 @@ jobs:
             throw "Format tests failed with exit code $code"
           }
 
+      - name: Check TrueHDD diagnostic summaries
+        shell: pwsh
+        run: |
+          dotnet test .\Tests\Test.Cavernize.Logic\Test.Cavernize.Logic.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Logic tests failed with exit code $LASTEXITCODE" }
+
       - name: Run Windows GUI regression and analysis parity tests
         shell: pwsh
         run: |
