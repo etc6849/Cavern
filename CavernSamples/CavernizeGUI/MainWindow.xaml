@@ -5,9 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:cav="clr-namespace:Cavern.WPF.Controls;assembly=Cavern.WPF"
         xmlns:uc="clr-namespace:CavernizeGUI.UserControls"
-        xmlns:vw2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="Cavernize" Height="900" Width="1200" Background="#696969">
+        Title="Cavernize V5 Beta" Height="460" Width="1200" Background="#696969">
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -64,7 +63,6 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="350"/>
                 <RowDefinition Height="auto"/>
-                <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid Margin="10">
                 <Grid.ColumnDefinitions>
@@ -101,7 +99,7 @@
                 </Grid>
                 <Grid Grid.Column="1" Margin="10,0,0,0">
                     <Image Margin="1,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Top" Width="169"
-                           Source="{StaticResource Logo}" MouseDown="Ad"/>
+                           Source="{StaticResource Logo}" MouseDown="OpenCavernWebsite"/>
                     <Border Margin="0,25,0,0" Background="#222" CornerRadius="15"/>
                     <Grid Margin="10,35,10,10">
                         <Grid AllowDrop="True" DragEnter="FileDragEnter" DragOver="FileDragOver" Drop="DropFile">
@@ -151,7 +149,6 @@
                 <ProgressBar Name="progress" Height="20" Width="150" Maximum="1"/>
                 <TextBlock Name="status" FontSize="15" TextWrapping="Wrap"/>
             </StatusBar>
-            <vw2:WebView2 Grid.Row="2" Source="https://cavern.sbence.hu/cavern/app_cav.php"/>
         </Grid>
     </DockPanel>
 </Window>

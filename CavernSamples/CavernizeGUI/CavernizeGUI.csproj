@@ -10,7 +10,8 @@
 		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
 		<DebugType>full</DebugType>
 		<Authors>VoidX</Authors>
-		<Product>Cavernize</Product>
+		<Product>Cavernize V5 Beta</Product>
+		<Version>5.0.0-beta.1</Version>
 		<PackageProjectUrl>https://cavern.sbence.hu/</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/VoidXH/Cavern/</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
@@ -24,10 +25,6 @@
 		<DebugType>none</DebugType>
 		<Optimize>true</Optimize>
 	</PropertyGroup>
-
-	<ItemGroup>
-		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3179.45" />
-	</ItemGroup>
 
 	<ItemGroup>
 		<Compile Include="..\VoidX.WPF\FFmpeg\FFmpegGUI.cs" Link="VoidX.WPF\FFmpeg\FFmpegGUI.cs" />

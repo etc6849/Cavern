@@ -3,6 +3,7 @@ using System;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -80,8 +81,6 @@ public partial class MainWindow : Window {
             ProgressState = TaskbarItemProgressState.Normal
         };
 
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", Path.Combine(appData, "Temp", "CavernizeWebCache"));
         InitializeComponent();
         RenderingSettings = new DynamicSpecialRenderModeSettings();
 #if DEBUG
@@ -314,22 +313,20 @@ public partial class MainWindow : Window {
     /// Shows information about the used Cavern library and its version.
     /// </summary>
     void About(object _, RoutedEventArgs e) {
-        StringBuilder result = new StringBuilder(Listener.Info);
+        string version = typeof(MainWindow).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>().InformationalVersion;
+        StringBuilder result = new StringBuilder(Title).AppendLine().Append("Build ").AppendLine(version)
+            .AppendLine().Append(Listener.Info);
         if (CavernAmp.Available) {
             result.Append('\n').Append(language["AbouA"]);
         }
 
-        result.AppendLine().Append("Build: ");
-        FileInfo cavernizeLogic = new("Cavernize.Logic.dll");
-        FileInfo cavernizeGui = new("CavernizeGUI.dll");
-        result.Append(cavernizeLogic.CreationTime).Append(", ").Append(cavernizeGui.CreationTime);
         MessageBox.Show(result.ToString(), language["AbouH"]);
     }
 
     /// <summary>
     /// Open Cavern's website.
     /// </summary>
-    void Ad(object _, RoutedEventArgs e) => Process.Start(new ProcessStartInfo {
+    void OpenCavernWebsite(object _, RoutedEventArgs e) => Process.Start(new ProcessStartInfo {
         FileName = "https://cavern.sbence.hu",
         UseShellExecute = true
     });

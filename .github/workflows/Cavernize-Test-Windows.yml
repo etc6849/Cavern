@@ -1,9 +1,6 @@
 name: Cavernize V4 TrueHD fix Windows build
 
 on:
-  push:
-    branches:
-      - feature/cavernize-v4-truehd-fix
   workflow_dispatch:
 
 permissions:
@@ -17,6 +14,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: b646f4b3584e7a87ab7a28434d90df4f7e8ac07e
 
       - uses: actions/setup-dotnet@v4
         with:
