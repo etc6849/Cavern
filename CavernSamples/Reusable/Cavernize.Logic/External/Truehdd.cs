@@ -139,7 +139,8 @@ public class Truehdd : ExternalConverter {
         string atmos = stem + ".atmos";
         bool foundAtmos = File.Exists(atmos);
         string decoded = foundAtmos ? atmos : stem + ".caf";
-        CavernizeTrack track = new(AudioReader.Open(decoded), foundAtmos ? Codec.DAMF : Codec.PCM_LE, 0);
+        AudioReader reader = foundAtmos ? new DolbyAtmosMasterFormatReader(decoded) : AudioReader.Open(decoded);
+        CavernizeTrack track = new(reader, foundAtmos ? Codec.DAMF : Codec.PCM_LE, 0);
         if (track.Length != result.GetProperty("samples").GetInt64() ||
             track.SampleRate != result.GetProperty("sampleRate").GetInt32()) {
             track.Dispose();
@@ -197,7 +198,7 @@ public class Truehdd : ExternalConverter {
         AudioReader reader;
         Codec codec;
         if (File.Exists(atmosPath)) {
-            reader = AudioReader.Open(atmosPath);
+            reader = new DolbyAtmosMasterFormatReader(atmosPath);
             codec = Codec.DAMF;
         } else {
             reader = AudioReader.Open(tempTrack + ".caf");
