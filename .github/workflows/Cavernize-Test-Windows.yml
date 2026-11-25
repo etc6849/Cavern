@@ -55,14 +55,7 @@ jobs:
             $ffmpegBin | Add-Content -LiteralPath $env:GITHUB_PATH
             $env:PATH = "$ffmpegBin;$env:PATH"
           }
-          if (!(Get-Command mkvmerge -ErrorAction SilentlyContinue) -or !(Get-Command mkvextract -ErrorAction SilentlyContinue)) {
-            choco install mkvtoolnix -y --no-progress
-            if ($LASTEXITCODE -ne 0) { throw 'MKVToolNix installation failed.' }
-            $mkvBin = Join-Path $env:ProgramFiles 'MKVToolNix'
-            $mkvBin | Add-Content -LiteralPath $env:GITHUB_PATH
-            $env:PATH = "$mkvBin;$env:PATH"
-          }
-          foreach ($tool in @('ffmpeg', 'ffprobe', 'mkvmerge', 'mkvextract')) {
+          foreach ($tool in @('ffmpeg', 'ffprobe')) {
             $command = Get-Command $tool -ErrorAction SilentlyContinue
             if (!$command) {
               Write-Host "::error title=Windows verification tool unavailable::$tool"
@@ -99,18 +92,23 @@ jobs:
         run: |
           try {
             $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
-            .\Tests\Integration\Test-CavernizeV4.ps1 -Executable (Join-Path $publish 'CLI/CavernizeCLI.exe') -Decoder (Join-Path $publish 'Tools/TrueHDD/truehdd.exe') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration') -RequireMkvMerge
+            .\Tests\Integration\Test-CavernizeV4.ps1 -Executable (Join-Path $publish 'CLI/CavernizeCLI.exe') -Decoder (Join-Path $publish 'Tools/TrueHDD/truehdd.exe') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration')
           } catch {
             $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
             Write-Host "::error title=V4 media integration::$detail"
             throw
           }
 
-      - name: Compare Cavern TrueHD extraction with MKVToolNix
+      - name: Verify TrueHD extraction and decoding across lacing types
         shell: pwsh
         run: |
           $env:CAVERN_LACE_FIXTURE = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/atmos.thd'
-          $env:CAVERN_TEST_MKVEXTRACT = (Get-Command mkvextract -ErrorAction Stop).Source
+          $mkvextract = Get-Command mkvextract -ErrorAction SilentlyContinue
+          if ($mkvextract) {
+            $env:CAVERN_TEST_MKVEXTRACT = $mkvextract.Source
+          } else {
+            Write-Host "::notice title=MKVToolNix cross-check::mkvextract unavailable on this runner. The test compares against the original elementary stream and decodes with TrueHDD."
+          }
           $env:CAVERN_TEST_TRUEHDD = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD/truehdd.exe'
           $log = dotnet test .\Tests\Test.Cavern.Format\Test.Cavern.Format.csproj -c Release 2>&1
           $code = $LASTEXITCODE

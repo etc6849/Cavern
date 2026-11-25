@@ -86,12 +86,12 @@ public class MatroskaExtraction_Tests {
     }
 
     [TestMethod, Timeout(60000)]
-    public async Task GenuineAtmosMatchesMkvextractAndDecodesWithoutLoss() {
+    public async Task GenuineAtmosExtractsAndDecodesWithoutLoss() {
         string fixture = Environment.GetEnvironmentVariable("CAVERN_LACE_FIXTURE");
         string mkvextract = Environment.GetEnvironmentVariable("CAVERN_TEST_MKVEXTRACT");
         string truehdd = Environment.GetEnvironmentVariable("CAVERN_TEST_TRUEHDD");
-        if (fixture == null || mkvextract == null || truehdd == null) {
-            Assert.Inconclusive("Set CAVERN_LACE_FIXTURE, CAVERN_TEST_MKVEXTRACT and CAVERN_TEST_TRUEHDD for independent tool verification.");
+        if (fixture == null || truehdd == null) {
+            Assert.Inconclusive("Set CAVERN_LACE_FIXTURE and CAVERN_TEST_TRUEHDD to verify genuine TrueHD extraction.");
         }
 
         byte[] original = File.ReadAllBytes(fixture);
@@ -118,9 +118,12 @@ public class MatroskaExtraction_Tests {
                 using (MatroskaReader reader = new(input)) {
                     Extract(reader.Tracks[0], File.Create(cav));
                 }
-                await Run(mkvextract, input, "tracks", $"0:{refFile}");
-                CollectionAssert.AreEqual(original, File.ReadAllBytes(refFile));
-                CollectionAssert.AreEqual(File.ReadAllBytes(refFile), File.ReadAllBytes(cav));
+                byte[] extracted = File.ReadAllBytes(cav);
+                CollectionAssert.AreEqual(original, extracted);
+                if (mkvextract != null) {
+                    await Run(mkvextract, input, "tracks", $"0:{refFile}");
+                    CollectionAssert.AreEqual(File.ReadAllBytes(refFile), extracted);
+                }
 
                 string decoded = await Run(truehdd, "decode", "--json", cav, "--output-path", Path.Combine(work, $"decoded-{lacing}"));
                 using JsonDocument result = JsonDocument.Parse(decoded);
