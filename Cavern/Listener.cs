@@ -311,6 +311,8 @@ namespace Cavern {
                     WaveformUtils.Gain(renderBuffer, Volume, channel, channelCount);
                 }
             }
+            ObservePreLimiterPcm?.Invoke(renderBuffer);
+
             if (Normalizer != 0) { // Normalize
                 normalizer.decayFactor = Normalizer * UpdateRate / SampleRate;
                 normalizer.Process(renderBuffer);

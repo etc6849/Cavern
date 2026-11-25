@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 
 using Cavern.Channels;
 using Cavern.Format;
@@ -145,7 +146,22 @@ public partial class MainWindow {
     /// <summary>
     /// Show the post-render report in a popup.
     /// </summary>
-    void ShowPostRenderReport(object _, RoutedEventArgs e) => MessageBox.Show(report.Report, language["PReRe"]);
+    void ShowPostRenderReport(object _, RoutedEventArgs e) {
+        new Window {
+            Owner = this,
+            Title = language["PReRe"],
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Width = Math.Min(640, SystemParameters.WorkArea.Width),
+            Height = Math.Min(680, SystemParameters.WorkArea.Height),
+            Content = new TextBox {
+                Text = report.Report,
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Padding = new Thickness(12)
+            }
+        }.ShowDialog();
+    }
 
     /// <summary>
     /// Shows a popup about what channel should be wired to which output.

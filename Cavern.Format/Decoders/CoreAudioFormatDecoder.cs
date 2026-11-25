@@ -10,6 +10,12 @@ namespace Cavern.Format.Decoders {
     /// </summary>
     /// <see href="https://developer.apple.com/library/archive/documentation/MusicAudio/Reference/CAFSpec/CAF_overview/CAF_overview.html"/>
     public class CoreAudioFormatDecoder : UncompressedDecoder {
+        long dataSize;
+        bool dataAligned;
+
+        // DecodeBlock can pad a short read with silence. Check the declared payload separately.
+        internal bool HasCompletePcmPayload => dataAligned && dataSize <= stream.Length - dataStart;
+
         /// <summary>
         /// Converts a Core Audio Format bitstream with header to raw samples.
         /// </summary>
@@ -45,6 +51,8 @@ namespace Cavern.Format.Decoders {
                         break;
                     case RIFFWaveConsts.dataSync:
                         Length = (chunkSize - 4) / ((long)Bits >> 3) / ChannelCount;
+                        dataSize = chunkSize - 4;
+                        dataAligned = dataSize >= 0 && dataSize % (((long)Bits >> 3) * ChannelCount) == 0;
                         dataStart = reader.Position + 4; // First 4 bytes are the edit count
                         stream.Position += chunkSize;
                         break;

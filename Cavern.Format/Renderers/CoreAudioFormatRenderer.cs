@@ -28,6 +28,8 @@ namespace Cavern.Format.Renderers {
         /// </summary>
         readonly int[] movementFrames;
 
+        internal bool? HasCompletePcmPayload => stream is CoreAudioFormatDecoder caf ? (bool?)caf.HasCompletePcmPayload : null;
+
         /// <summary>
         /// Renders a channel-based Core Audio Format stream.
         /// </summary>

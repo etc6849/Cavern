@@ -33,6 +33,8 @@ public sealed class ExternalConverterHandler : IDisposable {
     /// </summary>
     readonly CavernizeTrack intermediateTrack;
 
+    internal CavernizeTrack GetRenderedTrack(CavernizeTrack original) => intermediateTrack ?? original;
+
     /// <summary>
     /// Instantiates and disposes external converters when needed. Recreates the <see cref="CavernizeTrack"/> if needed.
     /// </summary>

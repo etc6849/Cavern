@@ -53,7 +53,9 @@ public sealed class PostRenderReport(Listener listener) {
     /// <summary>
     /// Extracts the <see cref="report"/> from a render to a text report.
     /// </summary>
-    public void Generate(RenderStats stats) {
+    public void Generate(RenderStats stats) => Generate(stats, null);
+
+    internal void Generate(RenderStats stats, PcmSamplePeakAnalysis peaks) {
         int total = listener.ActiveSources.Count;
         int dynamic = total - stats.GetSemiStaticCount() - stats.GetSuperStaticCount();
 
@@ -117,7 +119,72 @@ public sealed class PostRenderReport(Listener listener) {
             }
         }
 
+        if (peaks != null) {
+            builder.AppendLine();
+            AppendPeaks(builder, peaks);
+        }
         Report = builder.ToString();
+    }
+
+    internal void GenerateInterrupted(PcmSamplePeakAnalysis peaks) {
+        StringBuilder builder = new();
+        AppendPeaks(builder, peaks);
+        Report = builder.ToString();
+    }
+
+    static void AppendPeaks(StringBuilder builder, PcmSamplePeakAnalysis peaks) {
+        RenderReportStrings language = RenderReportStrings.Active;
+        AppendPeakSection(builder, peaks, peaks.PreLimiter, language["PcmPre"]);
+        builder.AppendLine();
+        AppendPeakSection(builder, peaks, peaks.Processed, language["PcmOut"]);
+    }
+
+    static void AppendPeakSection(StringBuilder builder, PcmSamplePeakAnalysis analysis,
+        PcmSamplePeakAccumulator accumulator, string title) {
+        RenderReportStrings language = RenderReportStrings.Active;
+        PcmPeakIssue issues = accumulator.Issues;
+        if (accumulator.ObservedFrames != analysis.ExpectedFrames) {
+            issues |= PcmPeakIssue.MissingBlock;
+        }
+        builder.AppendLine(title);
+        string coverageKey = issues != PcmPeakIssue.None ? "PcmInc" : analysis.SourceVerified ? "PcmOk" : "PcmUnv";
+        builder.Append(language[coverageKey]).Append(" (").Append(accumulator.ObservedFrames)
+            .Append(" / ").Append(analysis.ExpectedFrames).Append(' ').Append(language["PcmFrames"]).AppendLine(")");
+        foreach (PcmPeakIssue issue in peakIssues) {
+            if ((issues & issue) != 0) {
+                builder.Append("  - ").AppendLine(language["Pcm" + issue]);
+            }
+        }
+
+        if (ReferenceEquals(accumulator, analysis.PreLimiter) && analysis.PreLimiterError is Exception error) {
+            builder.Append("    ").Append(error.GetType().Name).Append(valueIs).AppendLine(error.Message);
+        }
+
+        ReadOnlySpan<float> values = accumulator.Peaks;
+        float overall = -1;
+        foreach (float value in values) {
+            overall = Math.Max(overall, value);
+        }
+        builder.Append(language["PcmAll"]).Append(valueIs).AppendLine(FormatPeak(overall));
+        for (int slot = 0; slot < values.Length; slot++) {
+            builder.Append("  ").Append(slot + 1).Append(". ").Append(analysis.Labels[slot])
+                .Append(valueIs).AppendLine(FormatPeak(values[slot]));
+        }
+    }
+
+    static readonly PcmPeakIssue[] peakIssues = Enum.GetValues<PcmPeakIssue>();
+
+    static string FormatPeak(float value) {
+        if (value < 0) {
+            return RenderReportStrings.Active["PcmNA"];
+        }
+        if (value == 0) {
+            return "−∞ dBFS";
+        }
+        double db = 20 * Math.Log10(value);
+        // Keep the sign of even the smallest float overs above unity.
+        string format = value != 1 && Math.Abs(db) < .005 ? "+0.000000;-0.000000" : "+0.00;-0.00;0.00";
+        return db.ToString(format) + " dBFS";
     }
 
     /// <summary>

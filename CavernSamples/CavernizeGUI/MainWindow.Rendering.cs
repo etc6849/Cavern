@@ -119,8 +119,19 @@ partial class MainWindow {
         taskEngine.Progress = 0;
         taskEngine.UpdateStatus(language["Start"]);
         RenderTarget renderTargetRef = Dispatcher.Invoke(() => RenderTarget);
-        RenderStats stats = WriteRender(target, writer, renderTargetRef);
-        report.Generate(stats);
+        PcmSamplePeakAnalysis peaks = new(environment.Listener, target.Length, renderTargetRef);
+        CavernizeTrack renderedTrack = external.GetRenderedTrack(target);
+        try {
+            peaks.CheckSource(renderedTrack, ReferenceEquals(target, renderedTrack));
+            RenderStats stats = WriteRender(target, writer, renderTargetRef, peaks);
+            peaks.CheckSource(renderedTrack, ReferenceEquals(target, renderedTrack));
+            report.Generate(stats, peaks);
+        } catch {
+            peaks.Flag(PcmPeakIssue.Interrupted);
+            report.GenerateInterrupted(peaks);
+            external.Dispose();
+            throw;
+        }
 
         string targetCodec = null;
         audio.Dispatcher.Invoke(() => targetCodec = ((ExportFormat)audio.SelectedItem).FFName);

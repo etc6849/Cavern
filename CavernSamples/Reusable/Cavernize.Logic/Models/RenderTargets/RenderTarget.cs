@@ -72,16 +72,7 @@ public partial class RenderTarget(string name, ReferenceChannel[] channels) {
     public virtual void Apply(bool surroundSwap) {
         Channel[] systemChannels = new Channel[Channels.Length];
         for (int ch = 0; ch < Channels.Length; ch++) {
-            Vector3 pos = ChannelPrototype.AlternativePositions[(int)Channels[ch]];
-            if (HeightSqueeze != 0 && Channels[ch].IsHeight()) {
-                systemChannels[ch] = new Channel(new Vector3(
-                    QMath.Lerp(pos.X, .5f, HeightSqueeze),
-                    pos.Y,
-                    QMath.Lerp(pos.Z, .5f, HeightSqueeze)
-                ), false);
-            } else {
-                systemChannels[ch] = new Channel(pos, Channels[ch] == ReferenceChannel.ScreenLFE);
-            }
+            systemChannels[ch] = CreateChannel(Channels[ch]);
         }
 
         if (surroundSwap && Channels.Length >= 8) {
@@ -91,6 +82,18 @@ public partial class RenderTarget(string name, ReferenceChannel[] channels) {
 
         Listener.HeadphoneVirtualizer = false;
         Listener.ReplaceChannels(systemChannels);
+    }
+
+    internal static Channel CreateChannel(ReferenceChannel channel) {
+        Vector3 pos = ChannelPrototype.AlternativePositions[(int)channel];
+        if (HeightSqueeze != 0 && channel.IsHeight()) {
+            return new Channel(new Vector3(
+                QMath.Lerp(pos.X, .5f, HeightSqueeze),
+                pos.Y,
+                QMath.Lerp(pos.Z, .5f, HeightSqueeze)
+            ), false);
+        }
+        return new Channel(pos, channel == ReferenceChannel.ScreenLFE);
     }
 
     /// <summary>

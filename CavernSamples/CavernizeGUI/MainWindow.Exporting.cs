@@ -97,7 +97,26 @@ partial class MainWindow {
     /// <summary>
     /// Renders a listener to a file, and returns some measurements of the render.
     /// </summary>
-    RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget) {
+    RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget, PcmSamplePeakAnalysis peaks) {
+        Listener listener = environment.Listener;
+        if (listener.ObservePreLimiterPcm != null) {
+            throw new InvalidOperationException("The listener already has a PCM observer.");
+        }
+
+        bool virtualizerState = Listener.HeadphoneVirtualizer;
+        listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
+        try {
+            return WriteRender(target, writer, renderTarget, peaks, listener);
+        } finally {
+            listener.ObservePreLimiterPcm = null;
+            if (virtualizerState) {
+                Listener.HeadphoneVirtualizer = true;
+            }
+        }
+    }
+
+    RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget,
+        PcmSamplePeakAnalysis peaks, Listener listener) {
         RenderStats stats = Dispatcher.Invoke(() => grading.IsChecked) ?
             new RenderStatsEx(environment.Listener) :
             new RenderStats(environment.Listener);
@@ -125,9 +144,12 @@ partial class MainWindow {
 
         bool wasError = false;
         while (progressor.Rendered < target.Length) {
+            peaks.BeginBlock(progressor.Rendered);
             float[] result;
+            bool rendered = false;
             try {
-                result = environment.Listener.Render();
+                result = listener.Render();
+                rendered = true;
             } catch (Exception e) {
                 if (!wasError) {
                     wasError = true;
@@ -137,6 +159,11 @@ partial class MainWindow {
                     });
                 }
                 result = new float[Listener.Channels.Length * environment.Listener.UpdateRate];
+            }
+            if (rendered) {
+                peaks.AcceptRenderedBlock(result);
+            } else {
+                peaks.RejectRenderedBlock();
             }
 
             // Alignment of split parts
@@ -184,9 +211,6 @@ partial class MainWindow {
         }
 
         writer?.Dispose();
-        if (virtualizerState) {
-            Listener.HeadphoneVirtualizer = true;
-        }
         return stats;
     }
 

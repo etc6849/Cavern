@@ -234,6 +234,13 @@ namespace Cavern {
         /// </summary>
         readonly Normalizer normalizer = new Normalizer(true);
 
+        internal delegate void PcmObserver(ReadOnlySpan<float> samples);
+
+        /// <summary>
+        /// Synchronously observes the current render block before limiting. The buffer is reused.
+        /// </summary>
+        internal PcmObserver ObservePreLimiterPcm { get; set; }
+
         /// <summary>
         /// Result of the last update. Size is [<see cref="Channels"/>.Length * <see cref="UpdateRate"/>].
         /// </summary>
