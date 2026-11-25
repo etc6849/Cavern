@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0) { throw "Ready Player One analysis failed with exit $LA
 $csv = [IO.Path]::ChangeExtension($Source, '.csv')
 $all = @(Import-Csv -LiteralPath $csv)
 function Near([double]$Actual, [double]$Expected, [double]$Tolerance, [string]$Metric) {
-    if (![double]::IsFinite($Actual) -or [Math]::Abs($Actual - $Expected) -gt $Tolerance) {
+    if ([double]::IsNaN($Actual) -or [double]::IsInfinity($Actual) -or [Math]::Abs($Actual - $Expected) -gt $Tolerance) {
         throw "$Metric expected $Expected +/- $Tolerance, observed $Actual"
     }
 }
@@ -34,7 +34,7 @@ foreach ($layout in $layouts) {
         Near $result.post_dbfs (-0.0026511277) 0.00001 'Processed peak'
         Near $result.pre_rms_dbfs (-28.043428) 0.00001 'Pre-limiter RMS'
         Near $result.post_rms_dbfs (-28.159846) 0.00001 'Processed RMS'
-        $bits = '0x{0:X8}' -f [BitConverter]::SingleToInt32Bits([float]-1.8498535)
+        $bits = '0x{0:X8}' -f [BitConverter]::ToUInt32([BitConverter]::GetBytes([float]-1.8498535), 0)
         if ($result.pre_float_bits -ne $bits) { throw "Ready Player One peak bits mismatch. Expected $bits." }
     } else {
         Near $result.listener_gain_effective_linear 0.707 0.0000001 'Automatic listener gain'

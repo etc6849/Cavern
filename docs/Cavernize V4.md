@@ -63,6 +63,6 @@ From a V4 feature checkout, run the comparison helper on the local full movie. S
 .\Tests\Integration\Test-CavernizeRpo.ps1 -Executable $cli -Source 'C:\AtmosMetaData\RPO.atmos' -WorkDirectory $work
 ```
 
-The check uses 403,084,680 frames at 48 kHz, frame 235,083,282, V3 gain, peak and RMS values, and all applicable legacy metric IDs. Compare the detailed V4 quality results with the saved V3 report for the same source. The full ready-player soundtrack is not part of the automated fixture.
+The check uses 403,084,680 frames at 48 kHz, frame 235,083,282, V3 gain, peak and RMS values, and all applicable legacy metric IDs. Compare the detailed V4 quality results with the saved V3 report for the same source. The cloud tests use a small TrueHD/Atmos fixture. Run the Ready Player One comparison locally with the full soundtrack.
 
 For JRiver MC36, import one movie into a disposable test library and record its track list. Run an integrated analysis with the SSD outside the watched movie folder. Rescan and confirm how your import rules handle the companion CSV before processing more movies. Open the exported MKV separately, start playback, seek near the start, middle, chapter boundaries and end, and select each intended subtitle. Use your multichannel output settings to confirm the decoded sample rate, routing and height channel order against the export tag. If applicable, confirm HDR and Dolby Vision playback on the actual display. Compare the source file SHA-256 before and after the test. GitHub's automated fixture tests do not exercise JRiver playback.

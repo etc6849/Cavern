@@ -4,6 +4,7 @@ on:
   push:
     branches-ignore:
       - feature/cavernize-pcm-sample-peaks
+      - feature/cavernize-v4-integrated-analysis
   workflow_dispatch:
 
 env:
