@@ -36,6 +36,7 @@
                 <Separator/>
                 <MenuItem Header="{StaticResource SMetH}" ToolTip="{StaticResource SMetT}" Click="ShowMetadata"/>
                 <MenuItem Name="reportMode" IsCheckable="True" Header="{StaticResource ReMoH}" ToolTip="{StaticResource ReMoT}"/>
+                <MenuItem Header="Analysis workspace and layouts..." Click="ConfigureIntegratedAnalysis"/>
                 <MenuItem Name="grading" IsCheckable="True" Header="{StaticResource DeGrH}" ToolTip="{StaticResource DeGrT}"/>
                 <MenuItem Name="verifyPeakEvents" IsCheckable="True" Header="Verify PCM peak events (Atmos)"
                           ToolTip="Independently scan the render and save source-contribution evidence beside the Atmos file."/>
@@ -112,7 +113,7 @@
                                 <TextBlock Margin="0,3,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Width="50"
                                            Text="{StaticResource OpTrk}" TextAlignment="Right" TextWrapping="NoWrap"/>
                                 <ComboBox Name="tracks" Margin="55,0,0,0" VerticalAlignment="Top"
-                                          SelectionChanged="OnTrackSelected"/>
+                                          SelectionChanged="OnTrackSelected" DropDownClosed="ConfirmAnalysisTrack"/>
                                 <TextBlock Margin="0,30,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Width="50"
                                            Text="{StaticResource OpOut}" TextAlignment="Right" TextWrapping="NoWrap"/>
                                 <ComboBox Name="audio" Margin="55,27,0,0" VerticalAlignment="Top"

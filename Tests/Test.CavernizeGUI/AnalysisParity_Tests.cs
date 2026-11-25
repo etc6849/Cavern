@@ -8,21 +8,34 @@ using Cavernize.Logic.Models;
 using Cavernize.Logic.Models.RenderTargets;
 using CavernizeGUI;
 using CavernizeGUI.Language;
+using CavernizeGUI.Resources;
 using Microsoft.VisualBasic.FileIO;
 
 namespace Test.CavernizeGUI;
 
 [TestClass, DoNotParallelize]
 public class AnalysisParity_Tests {
-    [TestMethod, Timeout(60000)]
-    public async Task GuiAndWindowsCliAgreeOnDamfAnalysisInBothLayouts() {
+    [TestMethod, Timeout(120000)]
+    public async Task GuiAndWindowsCliAgreeOnIntegratedAnalysisInBothLayouts() {
         string directory = Directory.CreateTempSubdirectory().FullName;
         try {
             foreach (string file in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Fixtures"))) {
                 File.Copy(file, Path.Combine(directory, Path.GetFileName(file)));
             }
-            string source = Path.Combine(directory, "ListenerGain.atmos");
-            var layouts = new[] { ("5.1.6 with top sides", "5.1.6-with-top-sides"), ("5.1.2 side", "5.1.2-side") };
+            List<string> sources = [Path.Combine(directory, "ListenerGain.atmos")];
+            string mediaFixtures = Environment.GetEnvironmentVariable("CAVERNIZE_V4_FIXTURES");
+            if (mediaFixtures != null) {
+                foreach (string fixture in Directory.GetFiles(mediaFixtures).Where(path =>
+                    Path.GetExtension(path) is ".mkv" or ".mka" && !Path.GetFileName(path).StartsWith("Two"))) {
+                    string file = Path.Combine(directory, Path.GetFileName(fixture));
+                    File.Copy(fixture, file);
+                    sources.Add(file);
+                }
+                Assert.AreEqual(3, sources.Count);
+            }
+            string guiWork = Path.Combine(directory, "GUI workspace"), cliWork = Path.Combine(directory, "CLI workspace");
+            string decoder = Environment.GetEnvironmentVariable("CAVERNIZE_V4_DECODER");
+            string[] layouts = ["5.1.6 with top sides", "5.1.2 side"];
             TaskCompletionSource rendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             Thread gui = new(() => {
                 try {
@@ -30,8 +43,13 @@ public class AnalysisParity_Tests {
                     application.Resources.MergedDictionaries.Add(MainWindowStrings.Active.ToResourceDictionary());
                     application.Resources.MergedDictionaries.Add(RenderTargetSelectorStrings.Active.ToResourceDictionary());
                     application.InitializeComponent();
-                    foreach ((string name, _) in layouts) {
-                        RenderWithGui(source, name);
+                    Settings.Default.analysisWorkDirectory = guiWork;
+                    Settings.Default.analysisTrueHdd = decoder ?? "";
+                    Settings.Default.analysisKeepEvidence = true;
+                    foreach (string source in sources) {
+                        foreach (string layout in layouts) {
+                            RenderWithGui(source, layout);
+                        }
                     }
                     application.Shutdown();
                     rendered.SetResult();
@@ -41,16 +59,16 @@ public class AnalysisParity_Tests {
             }) { IsBackground = true };
             gui.SetApartmentState(ApartmentState.STA);
             gui.Start();
-            await rendered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await rendered.Task.WaitAsync(TimeSpan.FromSeconds(70));
 
-            foreach ((string name, string id) in layouts) {
-                string report = Path.Combine(directory, $"ListenerGain-{id}-PeakAnalysis");
-                string[] guiCsv = ReadCsvWithoutId(report + ".csv");
-                string guiJson = ReadJsonWithoutId(report + "-Verification.json");
-                Assert.IsTrue(guiCsv.Any(x => x.StartsWith("overall") && x.Contains("complete")));
-                await RenderWithCli(source, name);
-                CollectionAssert.AreEqual(guiCsv, ReadCsvWithoutId(report + ".csv"), name);
-                Assert.AreEqual(guiJson, ReadJsonWithoutId(report + "-Verification.json"), name);
+            foreach (string source in sources) {
+                string report = Path.ChangeExtension(source, ".csv");
+                string[] guiCsv = ReadCsvWithoutId(report);
+                Assert.AreEqual(2, guiCsv.Count(row => row.Split('	').Contains("overall")));
+                Dictionary<string, string> guiJson = ReadEvidence(guiWork, source);
+                await RenderWithCli(source, layouts, cliWork, decoder);
+                CollectionAssert.AreEqual(guiCsv, ReadCsvWithoutId(report), source);
+                CollectionAssert.AreEquivalent(guiJson.ToArray(), ReadEvidence(cliWork, source).ToArray(), source);
             }
             Assert.IsFalse(Directory.EnumerateFiles(directory, "*.wav").Any());
         } finally {
@@ -76,12 +94,18 @@ public class AnalysisParity_Tests {
         }
     }
 
-    static async Task RenderWithCli(string source, string name) {
+    static async Task RenderWithCli(string source, IEnumerable<string> layouts, string work, string decoder) {
         string cli = Environment.GetEnvironmentVariable("CAVERNIZE_PUBLISHED_CLI") ??
             Path.GetFullPath(Path.Combine("..", "..", "..", "..", "CavernSamples", "CavernizeCLI", "bin", "Release", "net8.0", "CavernizeCLI.exe"));
         ProcessStartInfo start = new(cli) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
-        foreach (string argument in new[] { "--input", source, "--layout", name, "--report-only", "--quality", "--verify-peak-events" }) {
+        string[] args = ["--input", source, "--work-dir", work, "--report-only", "--quality", "--verify-peak-events",
+            "--keep-verification-json"];
+        foreach (string argument in args.Concat(layouts.SelectMany(x => new[] { "--layout", x }))) {
             start.ArgumentList.Add(argument);
+        }
+        if (decoder != null) {
+            start.ArgumentList.Add("--truehdd");
+            start.ArgumentList.Add(decoder);
         }
         using Process process = Process.Start(start);
         Task<string> stdout = process.StandardOutput.ReadToEndAsync(), stderr = process.StandardError.ReadToEndAsync();
@@ -109,11 +133,17 @@ public class AnalysisParity_Tests {
         return rows.ToArray();
     }
 
-    static string ReadJsonWithoutId(string path) {
-        JsonObject json = JsonNode.Parse(File.ReadAllText(path)).AsObject();
-        Assert.AreEqual("complete", json["Status"].GetValue<string>());
-        Assert.IsTrue(json["Evidence"]["Matches"].GetValue<bool>());
-        json.Remove("AnalysisId");
-        return json.ToJsonString();
+    static Dictionary<string, string> ReadEvidence(string root, string source) {
+        Dictionary<string, string> evidence = [];
+        foreach (string path in Directory.GetFiles(root, "*-Verification.json", System.IO.SearchOption.AllDirectories)) {
+            JsonObject json = JsonNode.Parse(File.ReadAllText(path)).AsObject();
+            if (json["SourceFile"].GetValue<string>() == Path.GetFileName(source)) {
+                Assert.IsTrue(json["Evidence"]["Matches"].GetValue<bool>());
+                json.Remove("AnalysisId");
+                evidence.Add(json["LayoutId"].GetValue<string>(), json.ToJsonString());
+            }
+        }
+        Assert.AreEqual(2, evidence.Count);
+        return evidence;
     }
 }

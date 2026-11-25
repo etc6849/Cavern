@@ -1,5 +1,7 @@
 ﻿using System;
 
+using System.IO;
+
 using Cavern;
 using Cavern.Format;
 using Cavern.Format.Common;
@@ -88,6 +90,17 @@ partial class MainWindow {
             };
         }
 
+        if (Path.GetExtension(path).Equals(".mkv", StringComparison.OrdinalIgnoreCase) && target.Container == Container.Matroska) {
+            if (!ffmpeg.Found) {
+                throw new IOException("FFmpeg is required to preserve the source Matroska metadata.");
+            }
+            if (File.Exists(path)) {
+                throw new IOException("Choose a new destination for the MKV export.");
+            }
+            var (layout, grade, verify, format, tool) = (RenderTarget, grading.IsChecked, verifyPeakEvents.IsChecked, ExportFormat, ffmpeg.Location);
+            return () => RenderMatroska(target, path, layout, grade, verify, format, tool);
+        }
+
         blockSize = CavernizeOutput.GetBlockSize(RenderTarget, environment);
         AudioWriter writer = CavernizeOutput.CreateRenderOutput(this, path, environment, target, codec, bits);
         return () => RenderTask(target, writer, path);
@@ -108,21 +121,38 @@ partial class MainWindow {
         return external;
     }
 
+    void RenderMatroska(CavernizeTrack target, string output, RenderTarget layout, bool grade, bool verify, ExportFormat format, string tool) {
+        using ExternalConverterHandler external = CreateExternalHandler(target, 0);
+        if (external.Failed) {
+            throw new IOException(external.Error.Message, external.Error);
+        }
+        CavernizeTrack rendered = external.GetRenderedTrack(target);
+        Progressor progressor = new(rendered.Length, environment.Listener, taskEngine);
+        var result = MatroskaExport.Run(this, environment, target, rendered, target.Path, output, format, layout, grade, verify,
+            tool, taskEngine.UpdateStatus, progressor.Update);
+        report = result.Report;
+        FinishTask(target);
+        if (result.AnalysisPath != null) {
+            taskEngine.UpdateStatus($"Export finished. Analysis saved to {result.AnalysisPath}");
+        }
+    }
+
     /// <summary>
     /// Render the content and export it to a channel-based format.
     /// </summary>
     void RenderTask(CavernizeTrack target, AudioWriter writer, string finalName) {
-        ExternalConverterHandler external = CreateExternalHandler(target, 0);
+        using ExternalConverterHandler external = CreateExternalHandler(target, 0);
         if (external.Failed) {
             return;
         }
 
         taskEngine.Progress = 0;
         taskEngine.UpdateStatus(language["Start"]);
-        var (renderTargetRef, verify) = Dispatcher.Invoke(() => (RenderTarget, verifyPeakEvents.IsChecked));
+        var (renderTargetRef, verify, grade) = Dispatcher.Invoke(() => (RenderTarget, verifyPeakEvents.IsChecked, grading.IsChecked));
         CavernizeTrack renderedTrack = external.GetRenderedTrack(target);
         string source = target.AtmosSourcePath;
         bool exportAnalysis = source != null;
+        bool integratedReport = target.Container == Container.Matroska && (grade || verify);
         PcmSamplePeakAnalysis peaks = null;
         try {
             RenderStats stats = WriteRender(target, renderedTrack, writer, renderTargetRef, verify, out peaks);
@@ -134,7 +164,6 @@ partial class MainWindow {
             if (exportAnalysis) {
                 SavePeakAnalysis(source, peaks);
             }
-            external.Dispose();
             throw;
         }
 
@@ -157,13 +186,23 @@ partial class MainWindow {
             merger.MakeSafe(finalName);
             if (!merger.Merge(ffmpeg, finalName)) {
                 taskEngine.UpdateStatus("Failed to create the final file. Are your permissions sufficient in the export folder?");
-                external.Dispose();
                 return;
             }
         }
 
-        external.Dispose();
+        string reportPath = null;
+        if (integratedReport) {
+            if (PcmPeakExport.Status(peaks) == "incomplete" || (verify && peaks.Diagnostics == null)) {
+                throw new IOException("The PCM report or requested Atmos verification was incomplete.");
+            }
+            IntegratedAnalysisReport analysis = new(target.Path, target);
+            analysis.Add(this, peaks, report, null, grade, targetCodec);
+            reportPath = analysis.Publish();
+        }
         FinishTask(target);
+        if (reportPath != null) {
+            taskEngine.UpdateStatus($"Export finished. Analysis saved to {reportPath}");
+        }
     }
 
     void SavePeakAnalysis(string source, PcmSamplePeakAnalysis peaks) {

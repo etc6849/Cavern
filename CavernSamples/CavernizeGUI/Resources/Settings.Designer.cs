@@ -178,5 +178,26 @@ namespace CavernizeGUI.Resources {
                 this["lastOutputFilters"] = value;
             }
         }
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string analysisWorkDirectory {
+            get => (string)this["analysisWorkDirectory"];
+            set => this["analysisWorkDirectory"] = value;
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string analysisTrueHdd {
+            get => (string)this["analysisTrueHdd"];
+            set => this["analysisTrueHdd"] = value;
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool analysisKeepEvidence {
+            get => (bool)this["analysisKeepEvidence"];
+            set => this["analysisKeepEvidence"] = value;
+        }
+
     }
 }

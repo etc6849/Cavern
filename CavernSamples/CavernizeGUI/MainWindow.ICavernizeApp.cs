@@ -38,7 +38,10 @@ partial class MainWindow : ICavernizeApp {
     /// <inheritdoc/>
     public CavernizeTrack SelectedTrack {
         get => trackInfo.SelectedTrack;
-        set => trackInfo.SelectedTrack = value;
+        set {
+            tracks.SelectedItem = value;
+            explicitAnalysisTrack = true;
+        }
     }
 
     /// <inheritdoc/>
@@ -68,6 +71,7 @@ partial class MainWindow : ICavernizeApp {
 
     /// <inheritdoc/>
     public void OpenContent(AudioFile file) {
+        explicitAnalysisTrack = false;
         fileName.Text = Path.GetFileName(file.Path);
         LoadedFile = file;
         if (file.Tracks.Count != 0) {
@@ -87,6 +91,9 @@ partial class MainWindow : ICavernizeApp {
 
     /// <inheritdoc/>
     public Action GetRenderTask(string path) {
+        if (reportMode.IsChecked && LoadedFile != null && IntegratedAnalysis.Supports(LoadedFile.Path)) {
+            return GetIntegratedAnalysisTask();
+        }
         try {
             PreRender();
         } catch (Exception e) {

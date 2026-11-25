@@ -37,7 +37,12 @@ public sealed class PostRenderReport(Listener listener) {
         return grade;
     }
 
-    internal sealed record QualityMetric(string Name, float? Db, string Grade);
+    internal sealed record QualityMetric(string Name, float? Db, string Grade, string Id = null);
+    internal sealed record BedPosition(ReferenceChannel Channel, System.Numerics.Vector3 Position);
+    internal IReadOnlyList<BedPosition> Beds { get; private set; } = Array.Empty<BedPosition>();
+    internal int DynamicObjects { get; private set; }
+    internal int UnusedTargets { get; private set; }
+    internal bool NoLfe { get; private set; }
     internal IReadOnlyList<QualityMetric> Quality { get; private set; } = Array.Empty<QualityMetric>();
 
     /// <summary>
@@ -49,36 +54,39 @@ public sealed class PostRenderReport(Listener listener) {
         int total = listener.ActiveSources.Count;
         int dynamic = total - stats.GetSemiStaticCount() - stats.GetSuperStaticCount();
 
-        List<ReferenceChannel> channels =
-            [.. stats.GetStaticOrSemiStaticPositions().Select(x => Renderer.ChannelFromPosition(x / Listener.EnvironmentSize))];
-        channels.Sort();
+        Beds = stats.GetStaticOrSemiStaticPositions().Select(x => x / Listener.EnvironmentSize)
+            .Select(x => new BedPosition(Renderer.ChannelFromPosition(x), x)).OrderBy(x => x.Channel).ToArray();
 
-        int unused = total - dynamic - channels.Count;
+        int unused = total - dynamic - Beds.Count;
         if (unused < 0) {
             dynamic += unused;
             unused = 0;
         }
 
+        DynamicObjects = dynamic;
+        UnusedTargets = unused;
+        NoLfe = false;
         RenderReportStrings language = RenderReportStrings.Active;
         StringBuilder builder = new();
         List<QualityMetric> quality = new();
         Quality = quality;
 
-        void ReportGrade(string metric, float decibelValue, int grade) {
-            string gradeLabel = language.Grades[grade];
-            quality.Add(new(metric, decibelValue, gradeLabel));
+        void ReportGrade(string id, float decibelValue, int grade) {
+            string metric = language[id], gradeLabel = language.Grades[grade];
+            quality.Add(new(metric, decibelValue, gradeLabel, id));
             builder.Append(metric).Append(valueIs).Append(decibelValue.ToString("0.00 dB (")).Append(gradeLabel).AppendLine(")");
         }
 
-        void ReportValue(string metric, float signalValue) {
+        void ReportValue(string id, float signalValue) {
+            string metric = language[id];
             float db = QMath.GainToDb(signalValue);
-            quality.Add(new(metric, db, null));
+            quality.Add(new(metric, db, null, id));
             builder.Append(metric).Append(valueIs).AppendLine(db.ToString("0.00 dB"));
         }
 
-        builder.Append(language["ABeds"]).Append(valueIs).Append(channels.Count);
-        if (channels.Count != 0) {
-            builder.Append(" (").Append(string.Join(", ", channels)).Append(')');
+        builder.Append(language["ABeds"]).Append(valueIs).Append(Beds.Count);
+        if (Beds.Count != 0) {
+            builder.Append(" (").Append(string.Join(", ", Beds.Select(x => x.Channel))).Append(')');
         }
         builder.AppendLine().Append(language["AObjs"]).Append(valueIs).AppendLine(dynamic.ToString())
             .Append(language["FakeT"]).Append(valueIs).AppendLine(unused.ToString());
@@ -100,28 +108,29 @@ public sealed class PostRenderReport(Listener listener) {
                 heightGrade = Grade(heightUsage, 10, 3);
 
             builder.AppendLine();
-            ReportValue(language["PeaGa"], statsEx.FrameLevelPeak);
-            ReportValue(language["RMSGa"], statsEx.FrameLevelRMS);
-            ReportGrade(language["MacDy"], macrodynamics, macrodynamicsGrade);
-            ReportGrade(language["MicDy"], microdynamics, microdynamicsGrade);
+            ReportValue("PeaGa", statsEx.FrameLevelPeak);
+            ReportValue("RMSGa", statsEx.FrameLevelRMS);
+            ReportGrade("MacDy", macrodynamics, macrodynamicsGrade);
+            ReportGrade("MicDy", microdynamics, microdynamicsGrade);
             builder.AppendLine();
 
             if (statsEx.LFELevelPeak != 0) {
-                ReportGrade(language["PeaLF"], lfePeak, lfePeakGrade);
-                ReportValue(language["RMSLF"], statsEx.LFELevelRMS);
-                ReportGrade(language["MacLF"], lfeMacrodynamics, lfeMacrodynamicsGrade);
-                ReportGrade(language["MicLF"], lfeMicrodynamics, lfeMicrodynamicsGrade);
+                ReportGrade("PeaLF", lfePeak, lfePeakGrade);
+                ReportValue("RMSLF", statsEx.LFELevelRMS);
+                ReportGrade("MacLF", lfeMacrodynamics, lfeMacrodynamicsGrade);
+                ReportGrade("MicLF", lfeMicrodynamics, lfeMicrodynamicsGrade);
                 string chestSlam = language.Grades[Math.Max(lfePeakGrade, lfeMicrodynamicsGrade)];
-                quality.Add(new(language["CheSl"], null, chestSlam));
+                quality.Add(new(language["CheSl"], null, chestSlam, "CheSl"));
                 builder.Append(language["CheSl"]).Append(valueIs).Append(chestSlam).AppendLine();
             } else {
+                NoLfe = true;
                 builder.AppendLine(language["NoLFE"]);
             }
             builder.AppendLine();
 
-            ReportGrade(language["SurUs"], surroundUsage, surroundGrade);
+            ReportGrade("SurUs", surroundUsage, surroundGrade);
             if (statsEx.RelativeHeightLevel != 0) {
-                ReportGrade(language["HeiUs"], heightUsage, heightGrade);
+                ReportGrade("HeiUs", heightUsage, heightGrade);
             }
         }
 

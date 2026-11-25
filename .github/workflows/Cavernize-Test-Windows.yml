@@ -1,9 +1,9 @@
-name: Cavernize Windows test build
+name: Cavernize V4 Windows release
 
 on:
   push:
     branches:
-      - feature/cavernize-pcm-sample-peaks
+      - feature/cavernize-v4-integrated-analysis
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   package:
-    if: github.ref == 'refs/heads/feature/cavernize-pcm-sample-peaks'
+    if: github.ref == 'refs/heads/feature/cavernize-v4-integrated-analysis'
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -29,7 +29,7 @@ jobs:
           $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
           dotnet publish .\CavernSamples\CavernizeGUI\CavernizeGUI.csproj -c Release -r win-x64 --self-contained true -o $publish
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
-          Copy-Item -LiteralPath 'LICENSE.md', 'docs/Cavernize PCM sample peaks.md' -Destination $publish
+          Copy-Item -LiteralPath 'LICENSE.md', 'docs/Cavernize PCM sample peaks.md', 'docs/Cavernize V4.md', 'docs/Cavernize V4 checklist.md' -Destination $publish
 
       - name: Publish Cavernize CLI
         shell: pwsh
@@ -38,6 +38,29 @@ jobs:
           $cli = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI'
           dotnet publish .\CavernSamples\CavernizeCLI\CavernizeCLI.csproj -c Release -r win-x64 --self-contained true -o $cli
           if ($LASTEXITCODE -ne 0) { throw "CLI publish failed with exit code $LASTEXITCODE" }
+
+      - name: Install verification tools and bundle TrueHDD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue) -or !(Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+          }
+          if (!(Get-Command mkvmerge -ErrorAction SilentlyContinue)) {
+            choco install mkvtoolnix -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'MKVToolNix installation failed.' }
+            (Join-Path $env:ProgramFiles 'MKVToolNix') | Add-Content -LiteralPath $env:GITHUB_PATH
+          }
+          $decoderPackage = Join-Path $env:RUNNER_TEMP 'truehdd.zip'
+          $decoderFolder = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD'
+          Invoke-WebRequest 'https://github.com/truehdd/truehdd/releases/download/0.6.3/truehdd-0.6.3-x86_64-pc-windows-msvc.zip' -OutFile $decoderPackage
+          if ((Get-FileHash -LiteralPath $decoderPackage).Hash -ne '34657a2c7d97779badc123929ee9ad055ef09366857d67eb40289948fbd0d555') {
+            throw 'TrueHDD checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $decoderPackage -DestinationPath $decoderFolder
+          & (Join-Path $decoderFolder 'truehdd.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'TrueHDD could not start.' }
 
       - name: Execute the published Windows CLI
         shell: pwsh
@@ -53,10 +76,24 @@ jobs:
             throw
           }
 
+      - name: Exercise integrated Atmos analysis and validate both MKV export routes
+        shell: pwsh
+        run: |
+          try {
+            $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
+            .\Tests\Integration\Test-CavernizeV4.ps1 -Executable (Join-Path $publish 'CLI/CavernizeCLI.exe') -Decoder (Join-Path $publish 'Tools/TrueHDD/truehdd.exe') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration') -RequireMkvMerge
+          } catch {
+            $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=V4 media integration::$detail"
+            throw
+          }
+
       - name: Run Windows GUI regression and analysis parity tests
         shell: pwsh
         run: |
           $env:CAVERNIZE_PUBLISHED_CLI = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe'
+          $env:CAVERNIZE_V4_FIXTURES = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/Movies (Fixture)'
+          $env:CAVERNIZE_V4_DECODER = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD/truehdd.exe'
           $log = dotnet test .\Tests\Test.CavernizeGUI\Test.CavernizeGUI.csproj -c Release 2>&1
           $exitCode = $LASTEXITCODE
           $log | Write-Host
@@ -72,7 +109,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
-          $zip = Join-Path $env:RUNNER_TEMP 'Cavernize-Test-win-x64-Release.zip'
+          $zip = Join-Path $env:RUNNER_TEMP 'Cavernize-V4-win-x64-Release.zip'
           [System.IO.Compression.ZipFile]::CreateFromDirectory($publish, $zip)
           $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
           try {
@@ -83,7 +120,8 @@ jobs:
               'Microsoft.Web.WebView2.Wpf.dll', 'WebView2Loader.dll',
               'CLI/CavernizeCLI.exe', 'CLI/CavernizeCLI.dll', 'CLI/CavernizeCLI.deps.json',
               'CLI/CavernizeCLI.runtimeconfig.json', 'CLI/Cavernize.Logic.dll',
-              'CLI/Cavern.dll', 'CLI/Cavern.Format.dll', 'CLI/coreclr.dll', 'CLI/hostfxr.dll'
+              'CLI/Cavern.dll', 'CLI/Cavern.Format.dll', 'CLI/coreclr.dll', 'CLI/hostfxr.dll',
+              'Tools/TrueHDD/truehdd.exe', 'Tools/TrueHDD/LICENSE', 'Tools/TrueHDD/NOTICE'
             )) {
               if (-not $archive.GetEntry($required)) { throw "Missing published file: $required" }
             }
@@ -99,10 +137,10 @@ jobs:
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: Cavernize-Test-win-x64-Release
+          name: Cavernize-V4-win-x64-Release
           path: |
-            ${{ runner.temp }}/Cavernize-Test-win-x64-Release.zip
-            ${{ runner.temp }}/Cavernize-Test-win-x64-Release.zip.sha256
+            ${{ runner.temp }}/Cavernize-V4-win-x64-Release.zip
+            ${{ runner.temp }}/Cavernize-V4-win-x64-Release.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -132,7 +170,7 @@ jobs:
             }
           }
           [System.IO.Compression.ZipFile]::ExtractToDirectory($outerZip, $destination)
-          $fileName = 'Cavernize-Test-win-x64-Release.zip'
+          $fileName = 'Cavernize-V4-win-x64-Release.zip'
           $original = Join-Path $env:RUNNER_TEMP $fileName
           $downloaded = Join-Path $destination $fileName
           $expected = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash

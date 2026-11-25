@@ -17,7 +17,7 @@ internal static class ChannelRender {
     internal static PcmSamplePeakAnalysis CreateAnalysis(ConversionEnvironment environment, CavernizeTrack target,
         CavernizeTrack renderedTrack, RenderTarget layout, bool verify) =>
         new(environment.Listener, target.Length, layout,
-            verify && target.AtmosSourcePath != null ? new PcmPeakDiagnostics(Listener.Channels.Length, renderedTrack) : null,
+            verify && renderedTrack.AtmosSourcePath != null ? new PcmPeakDiagnostics(Listener.Channels.Length, renderedTrack) : null,
             environment.Gain);
 
     /// <summary>
@@ -25,7 +25,7 @@ internal static class ChannelRender {
     /// </summary>
     internal static RenderStats Run(ConversionEnvironment environment, CavernizeTrack target, CavernizeTrack renderedTrack,
         AudioWriter writer, RenderTarget renderTarget, RenderingSettings settings, bool grading, bool verify, bool speakerVirtualizer,
-        int blockSize, Action progress, Action<Exception, long> renderError, out PcmSamplePeakAnalysis peaks) {
+        int blockSize, Action progress, Action<Exception, long> renderError, out PcmSamplePeakAnalysis peaks, bool derived = false) {
         Listener listener = environment.Listener;
         if (listener.ObservePreLimiterPcm != null || listener.ObservePostLimiterPcm != null) {
             throw new InvalidOperationException("The listener already has a PCM observer.");
@@ -45,7 +45,7 @@ internal static class ChannelRender {
                 };
             }
 
-            bool direct = ReferenceEquals(target, renderedTrack);
+            bool direct = !derived && ReferenceEquals(target, renderedTrack);
             peaks = CreateAnalysis(environment, target, renderedTrack, renderTarget, verify);
             peaks.CheckSource(renderedTrack, direct);
             listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
@@ -98,7 +98,7 @@ internal static class ChannelRender {
             }
 
             // Alignment of split parts
-            if (target.Length - renderedFrames < listener.UpdateRate) {
+            if (target.Length - renderedFrames <= listener.UpdateRate) {
                 Array.Resize(ref result, (int)((target.Length - renderedFrames) * Listener.Channels.Length));
                 flush = true;
             }

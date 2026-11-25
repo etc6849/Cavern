@@ -18,7 +18,7 @@ public class CavernizeCli_Tests {
     const string WideId = "5.1.6-with-top-sides", SideId = "5.1.2-side";
     const int Frames = 5381;
     const double FixtureSample = 16384d / 32767;
-    static readonly string[] AnalysisOptions = ["--report-only", "--quality", "--verify-peak-events"];
+    static readonly string[] AnalysisOptions = ["--report-only", "--legacy-report-files", "--quality", "--verify-peak-events"];
 
     [TestMethod]
     public async Task HelpListsLayoutsAndFailuresReturnMeaningfulCodes() {
@@ -114,7 +114,7 @@ public class CavernizeCli_Tests {
         string dir = CreateFixture(out string input);
         try {
             string csv = ReportPath(dir, SideId);
-            string[] arguments = ["--input", input, "--layout", Side, "--report-only"];
+            string[] arguments = ["--input", input, "--layout", Side, "--report-only", "--legacy-report-files"];
             Directory.CreateDirectory(csv);
             StringAssert.Contains(await Invoke(1, arguments), "Could not save analysis beside");
             Assert.IsTrue(Directory.Exists(csv));

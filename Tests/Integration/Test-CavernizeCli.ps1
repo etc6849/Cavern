@@ -62,7 +62,7 @@ $helpText = Invoke-Cli 0 @('--help')
 if (!$helpText.Contains('--listener-gain-db') -or !$helpText.Contains('--report-only')) { throw 'Incomplete help' }
 $list = Invoke-Cli 0 @('--list-layouts')
 if ($list -notmatch '(?m)^5\.1\.2 side\r?$' -or $list -notmatch '(?m)^5\.1\.6 with top sides\r?$') { throw 'Missing layout' }
-$common = @('--report-only', '--quality', '--verify-peak-events')
+$common = @('--report-only', '--legacy-report-files', '--quality', '--verify-peak-events')
 $null = Invoke-Cli 0 (@('--input', $source, '--layout', '5.1.6 with top sides') + $common)
 $null = Assert-Report '5.1.6-with-top-sides' 1 1 12 'Automatic'
 $null = Invoke-Cli 0 (@('--input', $source, '--layout', '5.1.2 side') + $common)

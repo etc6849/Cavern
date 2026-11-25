@@ -22,6 +22,7 @@ public sealed class ExternalConverterHandler : IDisposable {
     /// The setup or the conversion failed, the intermediate file won't be available or in integrity.
     /// </summary>
     public bool Failed { get; private set; }
+    internal Exception Error { get; private set; }
 
     /// <summary>
     /// The external converter required for the current process.
@@ -44,9 +45,13 @@ public sealed class ExternalConverterHandler : IDisposable {
     /// <param name="updateStatus">Called with a text description of the current operation</param>
     /// <param name="mainThread">A function that runs code on the main thread in order to pause application operation to ask for a licence agreement</param>
     public ExternalConverterHandler(CavernizeTrack target, ILicence licenceHandler,
-        Action<double> updateProgress, Action<string> updateStatus, Action<Action> mainThread) {
+        Action<double> updateProgress, Action<string> updateStatus, Action<Action> mainThread) :
+        this(target, licenceHandler, updateProgress, updateStatus, mainThread, null) { }
+
+    internal ExternalConverterHandler(CavernizeTrack target, ILicence licenceHandler,
+        Action<double> updateProgress, Action<string> updateStatus, Action<Action> mainThread, string executable) {
         if (target.Codec == Codec.TrueHD) { // Use truehdd if needed
-            handler = new Truehdd();
+            handler = new Truehdd(executable ?? Truehdd.Resolve(null));
         }
         if (handler != null) {
             updateProgress?.Invoke(-1);
@@ -58,6 +63,7 @@ public sealed class ExternalConverterHandler : IDisposable {
                 });
                 intermediateTrack = handler.Convert(target);
             } catch (Exception e) {
+                Error = e;
                 updateStatus?.Invoke(e.Message);
                 updateProgress?.Invoke(1);
                 Failed = true;

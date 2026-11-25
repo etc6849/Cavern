@@ -40,10 +40,12 @@ public sealed class ConversionEnvironment {
     /// <summary>
     /// Set up the listening environment for playing back the specified track.
     /// </summary>
-    public void AttachToListener(CavernizeTrack target) {
-        app.RenderTarget.Apply(app.RenderingSettings.SurroundSwap);
-        if (app.RenderTarget is not VirtualizerRenderTarget && app.ExportFormat.MaxChannels < Listener.Channels.Length) {
-            throw new OverMaxChannelsException(Listener.Channels.Length, app.ExportFormat.MaxChannels);
+    public void AttachToListener(CavernizeTrack target) => AttachToListener(target, app.RenderTarget, app.ExportFormat.MaxChannels);
+
+    internal void AttachToListener(CavernizeTrack target, RenderTarget layout, int maxChannels) {
+        layout.Apply(app.RenderingSettings.SurroundSwap);
+        if (layout is not VirtualizerRenderTarget && maxChannels < Listener.Channels.Length) {
+            throw new OverMaxChannelsException(Listener.Channels.Length, maxChannels);
         }
 
         if (app.RenderingSettings.SpeakerVirtualizer) {
@@ -52,11 +54,11 @@ public sealed class ConversionEnvironment {
         }
 
         // Prevent height limiting, require at least 4 overhead channels for full gain
-        safeGain = target.Renderer.HasObjects ? app.RenderTarget.GetSafeGain() : 1;
+        safeGain = target.Renderer.HasObjects ? layout.GetSafeGain() : 1;
         requestedGain = app.RenderingSettings.ListenerGainDbOverride;
         Listener.Volume = requestedGain is double db ? ToListenerGain(db) : app.RenderingSettings.Gain * safeGain;
 
-        if (app.RenderTarget is VirtualizerRenderTarget) {
+        if (layout is VirtualizerRenderTarget) {
             if (app.RenderingSettings.RoomCorrection != null && app.RenderingSettings.RoomCorrection.SampleRate != VirtualizerFilter.FilterSampleRate) {
                 throw new SampleRateMismatchException();
             }

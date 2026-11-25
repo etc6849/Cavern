@@ -74,49 +74,56 @@ internal static class PcmPeakExport {
         WriteAtomic(path, stream => {
             using StreamWriter writer = new(stream, new UTF8Encoding(true), leaveOpen: true);
             WriteRow(writer, columns);
-            int rate = analysis.SampleRate;
-            object[] metadata = [analysis.AnalysisId, Path.GetFileName(source), analysis.LayoutName, analysis.LayoutId, rate,
-                analysis.ExpectedFrames, analysis.PreLimiter.ObservedFrames, analysis.Processed.ObservedFrames,
-                rate > 0 ? analysis.ExpectedFrames / (double)rate : null,
-                rate > 0 ? Math.Min(analysis.PreLimiter.ObservedFrames, analysis.Processed.ObservedFrames) / (double)rate : null,
-                Status(analysis), analysis.Diagnostics == null ? "disabled" : analysis.Diagnostics.Matches(analysis) ? "matched" : "mismatch",
-                analysis.PreLimiter.Issues, analysis.Processed.Issues];
-            ListenerGainInfo? gain = analysis.ListenerGain;
-            object[] gainFields = [gain?.Mode, gain?.RequestedDb, gain?.AutomaticSafeGain, gain?.Effective, gain?.EffectiveDb];
-            void PeakRow(string kind, int? slot, string label, int preSlot, int postSlot) {
-                PcmSignalLevel pre = slot.HasValue ? analysis.PreLimiter.ChannelLevel(slot.Value - 1) : analysis.PreLimiter.OverallLevel();
-                PcmSignalLevel post = slot.HasValue ? analysis.Processed.ChannelLevel(slot.Value - 1) : analysis.Processed.OverallLevel();
-                WriteRow(writer, [
-                    kind, .. metadata, slot, label,
-                    .. EventFields(analysis.PreLimiter, preSlot, rate, true),
-                    .. EventFields(analysis.Processed, postSlot, rate, false),
-                    null, null, null,
-                    pre.Rms, pre.RmsDbfs, post.Rms, post.RmsDbfs,
-                    pre.Active60, pre.Active40, post.Active60, post.Active40,
-                    PcmSamplePeakAccumulator.ActivityWindowMs, PcmSamplePeakAccumulator.ActivityThreshold60,
-                    PcmSamplePeakAccumulator.ActivityThreshold40, .. gainFields
-                ]);
-            }
-            for (int slot = 0; slot < analysis.Labels.Length; slot++) {
-                PeakRow("channel", slot + 1, analysis.Labels[slot], slot, slot);
-            }
-            PeakRow("overall", null, null, MaximumSlot(analysis.PreLimiter), MaximumSlot(analysis.Processed));
-            foreach (PostRenderReport.QualityMetric metric in quality) {
-                object[] row = new object[columns.Length];
-                row[0] = "quality";
-                metadata.CopyTo(row, 1);
-                row[qualityColumn] = metric.Name;
-                row[qualityColumn + 1] = metric.Db;
-                row[qualityColumn + 2] = metric.Grade;
-                gainFields.CopyTo(row, gainColumn);
-                WriteRow(writer, row);
-            }
+            WriteRows(source, analysis, quality, (row, _) => WriteRow(writer, row));
         });
         return path;
     }
 
-    internal static string SaveEvidence(string source, PcmSamplePeakAnalysis analysis) {
-        string path = OutputBase(source, analysis) + "-Verification.json";
+    internal static IReadOnlyList<string> Columns => columns;
+
+    internal static void WriteRows(string source, PcmSamplePeakAnalysis analysis,
+        IReadOnlyList<PostRenderReport.QualityMetric> quality, Action<object[], string> write) {
+        int rate = analysis.SampleRate;
+        object[] metadata = [analysis.AnalysisId, Path.GetFileName(source), analysis.LayoutName, analysis.LayoutId, rate,
+            analysis.ExpectedFrames, analysis.PreLimiter.ObservedFrames, analysis.Processed.ObservedFrames,
+            rate > 0 ? analysis.ExpectedFrames / (double)rate : null,
+            rate > 0 ? Math.Min(analysis.PreLimiter.ObservedFrames, analysis.Processed.ObservedFrames) / (double)rate : null,
+            Status(analysis), analysis.Diagnostics == null ? "disabled" : analysis.Diagnostics.Matches(analysis) ? "matched" : "mismatch",
+            analysis.PreLimiter.Issues, analysis.Processed.Issues];
+        ListenerGainInfo? gain = analysis.ListenerGain;
+        object[] gainFields = [gain?.Mode, gain?.RequestedDb, gain?.AutomaticSafeGain, gain?.Effective, gain?.EffectiveDb];
+        void PeakRow(string kind, int? slot, string label, int preSlot, int postSlot) {
+            PcmSignalLevel pre = slot.HasValue ? analysis.PreLimiter.ChannelLevel(slot.Value - 1) : analysis.PreLimiter.OverallLevel();
+            PcmSignalLevel post = slot.HasValue ? analysis.Processed.ChannelLevel(slot.Value - 1) : analysis.Processed.OverallLevel();
+            write([
+                kind, .. metadata, slot, label,
+                .. EventFields(analysis.PreLimiter, preSlot, rate, true),
+                .. EventFields(analysis.Processed, postSlot, rate, false),
+                null, null, null,
+                pre.Rms, pre.RmsDbfs, post.Rms, post.RmsDbfs,
+                pre.Active60, pre.Active40, post.Active60, post.Active40,
+                PcmSamplePeakAccumulator.ActivityWindowMs, PcmSamplePeakAccumulator.ActivityThreshold60,
+                PcmSamplePeakAccumulator.ActivityThreshold40, .. gainFields
+            ], null);
+        }
+        for (int slot = 0; slot < analysis.Labels.Length; slot++) {
+            PeakRow("channel", slot + 1, analysis.Labels[slot], slot, slot);
+        }
+        PeakRow("overall", null, null, MaximumSlot(analysis.PreLimiter), MaximumSlot(analysis.Processed));
+        foreach (PostRenderReport.QualityMetric metric in quality) {
+            object[] row = new object[columns.Length];
+            row[0] = "quality";
+            metadata.CopyTo(row, 1);
+            row[qualityColumn] = metric.Name;
+            row[qualityColumn + 1] = metric.Db;
+            row[qualityColumn + 2] = metric.Grade;
+            gainFields.CopyTo(row, gainColumn);
+            write(row, metric.Id);
+        }
+    }
+
+    internal static string SaveEvidence(string source, PcmSamplePeakAnalysis analysis, string path = null) {
+        path ??= OutputBase(source, analysis) + "-Verification.json";
         object evidence = new {
             analysis.AnalysisId, SourceFile = Path.GetFileName(source), analysis.LayoutName, analysis.LayoutId, analysis.SampleRate,
             Status = Status(analysis), analysis.ExpectedFrames, AnalyzedFrames = analysis.PreLimiter.ObservedFrames,
@@ -148,7 +155,7 @@ internal static class PcmPeakExport {
         return pre ? [.. common, peak.PostLimiterSample, .. limiter] : [.. common, .. limiter];
     }
 
-    static void WriteRow(TextWriter writer, IEnumerable<object> fields) {
+    internal static void WriteRow(TextWriter writer, IEnumerable<object> fields) {
         writer.WriteLine(string.Join(",", fields.Select(field => {
             string value = Convert.ToString(field, CultureInfo.InvariantCulture) ?? "";
             return value.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
