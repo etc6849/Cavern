@@ -1,0 +1,6 @@
+presentations:
+  - type: home
+    bedInstances:
+      - channels:
+          - channel: L
+            ID: 0

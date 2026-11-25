@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net8.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>disable</Nullable>
 		<IsPackable>false</IsPackable>
@@ -16,9 +17,12 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\..\CavernSamples\CavernizeGUI\CavernizeGUI.csproj" />
+	  <ProjectReference Include="..\..\CavernSamples\CavernizeCLI\CavernizeCLI.csproj" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 	<ItemGroup>
+		<Using Include="System.IO" />
+		<None Include="..\Fixtures\Cavernize\ListenerGain.atmos*" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
 		<Compile Include="..\Test.Cavern\Consts\Usings.cs" Link="Consts\Usings.cs" />
 	</ItemGroup>
 </Project>

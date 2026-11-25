@@ -17,6 +17,8 @@ public class RenderingSettings {
     /// </summary>
     public virtual float Gain { get; set; } = 1;
 
+    internal double? ListenerGainDbOverride { get; set; }
+
     /// <summary>
     /// Virtualize and downmix elevated objects to ground-only layouts by practically applying HRTFs on height channels.
     /// </summary>

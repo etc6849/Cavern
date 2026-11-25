@@ -123,8 +123,7 @@ partial class MainWindow {
         CavernizeTrack renderedTrack = external.GetRenderedTrack(target);
         string source = target.AtmosSourcePath;
         bool exportAnalysis = source != null;
-        PcmPeakDiagnostics diagnostics = exportAnalysis && verify ? new(Listener.Channels.Length, renderedTrack) : null;
-        PcmSamplePeakAnalysis peaks = new(environment.Listener, target.Length, renderTargetRef, diagnostics);
+        PcmSamplePeakAnalysis peaks = ChannelRender.CreateAnalysis(environment, target, renderedTrack, renderTargetRef, verify);
         try {
             peaks.CheckSource(renderedTrack, ReferenceEquals(target, renderedTrack));
             RenderStats stats = WriteRender(target, writer, renderTargetRef, peaks);

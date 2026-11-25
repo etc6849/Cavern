@@ -15,11 +15,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <ProjectReference Include="..\..\CavernSamples\CavernizeCLI\CavernizeCLI.csproj" />
 	  <ProjectReference Include="..\..\CavernSamples\Reusable\Cavernize.Logic\Cavernize.Logic.csproj" />
 	  <ProjectReference Include="..\..\Cavern.Format\Cavern.Format.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Include="..\Fixtures\Cavernize\ListenerGain.atmos*" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
 		<Compile Include="..\Test.Cavern\Consts\Usings.cs" Link="Consts\Usings.cs" />
 	</ItemGroup>
 </Project>

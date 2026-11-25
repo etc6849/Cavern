@@ -41,6 +41,12 @@ public class RenderReportStringsZH : RenderReportStrings {
         Set("PcmVerification", "峰值验证");
         Set("PcmMatched", "匹配");
         Set("PcmMismatch", "不匹配");
+        Set("PcmListenerGain", "监听器增益");
+        Set("PcmGainOverride", "显式覆盖");
+        Set("PcmGainAuto", "自动");
+        Set("PcmGainRequested", "请求增益");
+        Set("PcmGainSafe", "自动安全乘数");
+        Set("PcmGainEffective", "实际增益");
         Set("PcmNA", "不可用");
         Set("PcmMissingBlock", "一个或多个预期的 PCM 帧缺失或无效。");
         Set("PcmInvalidBuffer", "渲染块大小或测量点调用次数异常。");

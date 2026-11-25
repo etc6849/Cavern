@@ -141,6 +141,17 @@ public sealed class PostRenderReport(Listener listener) {
 
     static void AppendPeaks(StringBuilder builder, PcmSamplePeakAnalysis peaks) {
         RenderReportStrings language = RenderReportStrings.Active;
+        if (peaks.ListenerGain is ListenerGainInfo gain) {
+            builder.Append(language["PcmListenerGain"]).Append(valueIs)
+                .Append(language[gain.RequestedDb.HasValue ? "PcmGainOverride" : "PcmGainAuto"]);
+            if (gain.RequestedDb is double requested) {
+                builder.Append(" | ").Append(language["PcmGainRequested"]).Append(valueIs)
+                    .Append(requested.ToString("R")).Append(" dB");
+            }
+            builder.Append(" | ").Append(language["PcmGainSafe"]).Append(valueIs).Append(gain.AutomaticSafeGain.ToString("R"))
+                .Append(" | ").Append(language["PcmGainEffective"]).Append(valueIs).Append(gain.Effective.ToString("R"))
+                .Append(" (").Append(gain.EffectiveDb.ToString("0.00")).AppendLine(" dB)").AppendLine();
+        }
         AppendPeakSection(builder, peaks, peaks.PreLimiter, language["PcmPre"]);
         builder.AppendLine();
         AppendPeakSection(builder, peaks, peaks.Processed, language["PcmOut"]);

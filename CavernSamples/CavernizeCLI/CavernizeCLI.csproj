@@ -26,8 +26,4 @@
 		<ProjectReference Include="..\Reusable\Cavernize.Logic\Cavernize.Logic.csproj" />
 	</ItemGroup>
 
-	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(Configuration)' == 'Release'">
-		<Exec Command="del /s /q bin\*.xml" />
-		<Exec Command="del /s /q bin\*.pdb" />
-	</Target>
 </Project>

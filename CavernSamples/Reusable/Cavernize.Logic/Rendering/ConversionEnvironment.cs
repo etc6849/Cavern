@@ -16,6 +16,10 @@ public sealed class ConversionEnvironment {
     /// </summary>
     public Listener Listener { get; private set; }
 
+    float safeGain = 1;
+    double? requestedGain;
+    internal ListenerGainInfo Gain => new(requestedGain, safeGain, Listener.Volume);
+
     /// <summary>
     /// Keeper of loaded files and settings.
     /// </summary>
@@ -48,8 +52,9 @@ public sealed class ConversionEnvironment {
         }
 
         // Prevent height limiting, require at least 4 overhead channels for full gain
-        float safeGain = target.Renderer.HasObjects ? app.RenderTarget.GetSafeGain() : 1;
-        Listener.Volume = app.RenderingSettings.Gain * safeGain;
+        safeGain = target.Renderer.HasObjects ? app.RenderTarget.GetSafeGain() : 1;
+        requestedGain = app.RenderingSettings.ListenerGainDbOverride;
+        Listener.Volume = requestedGain is double db ? ToListenerGain(db) : app.RenderingSettings.Gain * safeGain;
 
         if (app.RenderTarget is VirtualizerRenderTarget) {
             if (app.RenderingSettings.RoomCorrection != null && app.RenderingSettings.RoomCorrection.SampleRate != VirtualizerFilter.FilterSampleRate) {
@@ -72,6 +77,14 @@ public sealed class ConversionEnvironment {
 
         Reset();
         target.Attach(Listener, app.UpmixingSettings);
+    }
+
+    internal static float ToListenerGain(double db) {
+        float linear = (float)Math.Pow(10, db / 20);
+        if (!float.IsFinite(linear) || linear <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(db), "Listener gain must produce a finite positive PCM multiplier.");
+        }
+        return linear;
     }
 
     /// <summary>

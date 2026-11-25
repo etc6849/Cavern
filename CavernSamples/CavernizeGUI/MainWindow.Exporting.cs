@@ -1,17 +1,14 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Numerics;
 using System.Threading;
 
 using Cavern;
-using Cavern.Filters;
 using Cavern.Format;
 using Cavern.Format.Environment;
 using Cavern.Utilities;
-using Cavern.Virtualizer;
 
 using Cavernize.Logic.Models;
 using Cavernize.Logic.Models.RenderTargets;
+using Cavernize.Logic.Rendering;
 using VoidX.WPF;
 
 namespace CavernizeGUI;
@@ -94,128 +91,15 @@ partial class MainWindow {
         }
     }
 
-    /// <summary>
-    /// Renders a listener to a file, and returns some measurements of the render.
-    /// </summary>
     RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget, PcmSamplePeakAnalysis peaks) {
         Listener listener = environment.Listener;
-        if (listener.ObservePreLimiterPcm != null || listener.ObservePostLimiterPcm != null) {
-            throw new InvalidOperationException("The listener already has a PCM observer.");
-        }
-
-        bool virtualizerState = Listener.HeadphoneVirtualizer;
-        listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
-        listener.ObservePostLimiterPcm = peaks.ObservePostLimiter;
-        listener.TracePcmSources = peaks.Diagnostics != null;
-        try {
-            return WriteRender(target, writer, renderTarget, peaks, listener);
-        } finally {
-            listener.ObservePreLimiterPcm = null;
-            listener.ObservePostLimiterPcm = null;
-            listener.ClearPcmSourceTrace();
-            if (virtualizerState) {
-                Listener.HeadphoneVirtualizer = true;
-            }
-        }
-    }
-
-    RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget,
-        PcmSamplePeakAnalysis peaks, Listener listener) {
-        RenderStats stats = Dispatcher.Invoke(() => grading.IsChecked) ?
-            new RenderStatsEx(environment.Listener) :
-            new RenderStats(environment.Listener);
-        Progressor progressor = new Progressor(target.Length, environment.Listener, taskEngine);
-        bool customMuting = RenderingSettings.MuteBed || RenderingSettings.MuteGround;
-
-        // Virtualization is done with the buffer instead of each update in the listener to optimize FFT sizes
-        VirtualizerFilter virtualizer = null;
-        Normalizer normalizer = null;
-        bool virtualizerState = Listener.HeadphoneVirtualizer;
-        if (virtualizerState || Dispatcher.Invoke(() => RenderingSettings.SpeakerVirtualizer)) {
-            Listener.HeadphoneVirtualizer = false;
-            virtualizer = new VirtualizerFilter();
-            virtualizer.SetLayout();
-            normalizer = new Normalizer(true) {
-                decayFactor = 10 * (float)environment.Listener.UpdateRate / environment.Listener.SampleRate
-            };
-        }
-
-        int cachePosition = 0;
-        float[] writeCache = null;
-        bool flush = false;
-        // The size of writeCache makes sure ContainerWriters get correct sized blocks when written with WriteChannelLimitedBlock
-        writeCache = new float[blockSize / renderTarget.OutputChannels * Listener.Channels.Length];
-
-        bool wasError = false;
-        while (progressor.Rendered < target.Length) {
-            peaks.BeginBlock(progressor.Rendered);
-            float[] result;
-            bool rendered = false;
-            try {
-                result = listener.Render();
-                rendered = true;
-            } catch (Exception e) {
-                if (!wasError) {
-                    wasError = true;
-                    ThreadPool.QueueUserWorkItem(x => { // Don't hold up background processing
-                        TimeSpan time = TimeSpan.FromSeconds(progressor.Rendered / environment.Listener.SampleRate);
-                        Dispatcher.Invoke(() => Error(string.Format(language["RenEr"], time, e.Message)));
-                    });
-                }
-                result = new float[Listener.Channels.Length * environment.Listener.UpdateRate];
-            }
-            if (rendered) {
-                peaks.AcceptRenderedBlock(result);
-            } else {
-                peaks.RejectRenderedBlock();
-            }
-
-            // Alignment of split parts
-            if (target.Length - progressor.Rendered < environment.Listener.UpdateRate) {
-                Array.Resize(ref result, (int)((target.Length - progressor.Rendered) * Listener.Channels.Length));
-                flush = true;
-            }
-
-            Array.Copy(result, 0, writeCache, cachePosition, result.Length);
-            cachePosition += result.Length;
-            if (cachePosition == writeCache.Length || flush) {
-                if (virtualizer == null) {
-                    if (renderTarget is not DownmixedRenderTarget downmix) {
-                        writer?.WriteBlock(writeCache, 0, cachePosition);
-                    } else {
-                        downmix.PerformMerge(writeCache);
-                        writer?.WriteChannelLimitedBlock(writeCache, downmix.OutputChannels,
-                            Listener.Channels.Length, 0, cachePosition);
-                    }
-                } else {
-                    virtualizer.Process(writeCache, environment.Listener.SampleRate);
-                    normalizer.Process(writeCache);
-                    writer?.WriteChannelLimitedBlock(writeCache, renderTarget.OutputChannels,
-                        Listener.Channels.Length, 0, cachePosition);
-                }
-                cachePosition = 0;
-            }
-
-            if (progressor.Rendered > secondFrame) {
-                stats.Update(result);
-            }
-
-            if (customMuting) {
-                IReadOnlyList<Source> objects = target.Renderer.Objects;
-                for (int i = 0, c = objects.Count; i < c; i++) {
-                    Vector3 rawPos = objects[i].Position / Listener.EnvironmentSize;
-                    objects[i].Mute =
-                        (RenderingSettings.MuteBed && MathF.Abs(rawPos.X) % 1 < .01f &&
-                            MathF.Abs(rawPos.Y) % 1 < .01f && MathF.Abs(rawPos.Z % 1) < .01f) ||
-                        (RenderingSettings.MuteGround && rawPos.Y == 0);
-                }
-            }
-
-            progressor.Update();
-        }
-
-        writer?.Dispose();
-        return stats;
+        Progressor progressor = new(target.Length, listener, taskEngine);
+        var (grade, speakerVirtualizer) = Dispatcher.Invoke(() => (grading.IsChecked, RenderingSettings.SpeakerVirtualizer));
+        return ChannelRender.Run(listener, target, writer, renderTarget, peaks, RenderingSettings, grade, speakerVirtualizer,
+            blockSize, progressor.Update, (error, frame) => ThreadPool.QueueUserWorkItem(_ => {
+                TimeSpan time = TimeSpan.FromSeconds(frame / (double)listener.SampleRate);
+                Dispatcher.Invoke(() => Error(string.Format(language["RenEr"], time, error.Message)));
+            }));
     }
 
     /// <summary>
@@ -256,11 +140,6 @@ partial class MainWindow {
     /// Update the UI after this many samples have been rendered.
     /// </summary>
     const long updateInterval = 50000;
-
-    /// <summary>
-    /// The OAMD objects need this many samples at max to move to their initial position.
-    /// </summary>
-    const int secondFrame = 2 * 1536;
 
     /// <summary>
     /// The export process exports PCM data until this percentage and extra metadata after that.

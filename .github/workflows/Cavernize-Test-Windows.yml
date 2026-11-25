@@ -30,6 +30,29 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
           Copy-Item -LiteralPath 'LICENSE.md', 'docs/Cavernize PCM sample peaks.md' -Destination $publish
 
+      - name: Publish Cavernize CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI'
+          dotnet publish .\CavernSamples\CavernizeCLI\CavernizeCLI.csproj -c Release -r win-x64 --self-contained true -o $cli
+          if ($LASTEXITCODE -ne 0) { throw "CLI publish failed with exit code $LASTEXITCODE" }
+
+      - name: Execute the published Windows CLI
+        shell: pwsh
+        run: |
+          .\Tests\Integration\Test-CavernizeCli.ps1 `
+            -Executable (Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe') `
+            -FixtureDirectory '.\Tests\Fixtures\Cavernize' `
+            -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-cli-smoke')
+
+      - name: Run Windows GUI regression and analysis parity tests
+        shell: pwsh
+        run: |
+          $env:CAVERNIZE_PUBLISHED_CLI = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe'
+          dotnet test .\Tests\Test.CavernizeGUI\Test.CavernizeGUI.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "GUI regression tests failed with exit code $LASTEXITCODE" }
+
       - name: Package and verify the Windows ZIP
         shell: pwsh
         run: |
@@ -43,20 +66,28 @@ jobs:
               'CavernizeGUI.exe', 'CavernizeGUI.dll', 'CavernizeGUI.deps.json',
               'CavernizeGUI.runtimeconfig.json', 'Cavernize.Logic.dll', 'Cavern.Format.dll',
               'Cavern.dll', 'coreclr.dll', 'PresentationFramework.dll',
-              'Microsoft.Web.WebView2.Wpf.dll', 'WebView2Loader.dll'
+              'Microsoft.Web.WebView2.Wpf.dll', 'WebView2Loader.dll',
+              'CLI/CavernizeCLI.exe', 'CLI/CavernizeCLI.dll', 'CLI/CavernizeCLI.deps.json',
+              'CLI/CavernizeCLI.runtimeconfig.json', 'CLI/Cavernize.Logic.dll',
+              'CLI/Cavern.dll', 'CLI/Cavern.Format.dll', 'CLI/coreclr.dll', 'CLI/hostfxr.dll'
             )) {
               if (-not $archive.GetEntry($required)) { throw "Missing published file: $required" }
             }
           } finally {
             $archive.Dispose()
           }
-          Get-FileHash -LiteralPath $zip -Algorithm SHA256
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path -Leaf $zip)" | Set-Content -LiteralPath "$zip.sha256" -Encoding ascii
+          "Cavernize Release ZIP SHA-256: $hash" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          Write-Host "::notice title=Cavernize Release ZIP SHA-256::$hash"
 
       - name: Upload Cavernize Windows test build
         uses: actions/upload-artifact@v4
         with:
           name: Cavernize-Test-win-x64-Release
-          path: ${{ runner.temp }}/Cavernize-Test-win-x64-Release.zip
+          path: |
+            ${{ runner.temp }}/Cavernize-Test-win-x64-Release.zip
+            ${{ runner.temp }}/Cavernize-Test-win-x64-Release.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

@@ -7,6 +7,11 @@ using Cavernize.Logic.Models.RenderTargets;
 
 namespace Cavernize.Logic.Models;
 
+internal readonly record struct ListenerGainInfo(double? RequestedDb, float AutomaticSafeGain, float Effective) {
+    internal string Mode => RequestedDb.HasValue ? "Explicit override" : "Automatic";
+    internal double EffectiveDb => 20 * Math.Log10(Effective);
+}
+
 /// <summary>
 /// Coordinates the two PCM taps without owning any render buffers or changing the listener layout.
 /// </summary>
@@ -29,6 +34,7 @@ internal sealed class PcmSamplePeakAnalysis {
     bool sawPreLimiter;
     bool layoutChanged;
 
+    internal ListenerGainInfo? ListenerGain { get; }
     internal Guid AnalysisId { get; } = Guid.NewGuid();
     internal int SampleRate => sampleRate;
     internal string LayoutId { get; }
@@ -41,9 +47,10 @@ internal sealed class PcmSamplePeakAnalysis {
     internal PcmSamplePeakAccumulator PreLimiter { get; }
     internal PcmSamplePeakAccumulator Processed { get; }
 
-    internal PcmSamplePeakAnalysis(Listener listener, long expectedFrames, RenderTarget target, PcmPeakDiagnostics diagnostics = null) {
+    internal PcmSamplePeakAnalysis(Listener listener, long expectedFrames, RenderTarget target, PcmPeakDiagnostics diagnostics = null, ListenerGainInfo? listenerGain = null) {
         this.listener = listener;
         Diagnostics = diagnostics;
+        ListenerGain = listenerGain;
         ExpectedFrames = expectedFrames;
         updateRate = listener.UpdateRate;
         sampleRate = listener.SampleRate;

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Cavernize.Logic.Rendering;
 
 namespace Cavernize.Logic.Models;
 
@@ -23,9 +24,11 @@ internal static class PcmPeakExport {
         "pre_rms_linear", "pre_rms_dbfs", "post_rms_linear", "post_rms_dbfs",
         "pre_active_gt_minus60_percent", "pre_active_gt_minus40_percent",
         "post_active_gt_minus60_percent", "post_active_gt_minus40_percent",
-        "activity_window_ms", "activity_threshold_60_dbfs", "activity_threshold_40_dbfs"
+        "activity_window_ms", "activity_threshold_60_dbfs", "activity_threshold_40_dbfs", "listener_gain_mode", "listener_gain_requested_db",
+        "listener_automatic_safe_gain", "listener_gain_effective_linear", "listener_gain_effective_db"
     ];
 
+    static readonly int gainColumn = Array.IndexOf(columns, "listener_gain_mode");
     static readonly int qualityColumn = Array.IndexOf(columns, "quality_metric");
 
     internal static string SafeComponent(string text) {
@@ -54,13 +57,17 @@ internal static class PcmPeakExport {
         }
         string status = Status(analysis);
         string suffix = status == "complete" ? "" : status == "incomplete" ? "-Incomplete" : "-SourceUnverified";
-        return Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source)), $"{file}-{analysis.LayoutId}-PeakAnalysis{suffix}");
+        string layout = analysis.LayoutId;
+        if (analysis.ListenerGain?.RequestedDb is double requested) {
+            string db = (requested == 0 ? 0d : requested).ToString("R", CultureInfo.InvariantCulture)
+                .Replace("-", "m").Replace("+", "p");
+            layout += "-ListenerGain-" + db + "dB";
+        }
+        return Path.Combine(Path.GetDirectoryName(Path.GetFullPath(source)), $"{file}-{layout}-PeakAnalysis{suffix}");
     }
 
-    static string Status(PcmSamplePeakAnalysis analysis) =>
-        analysis.PreLimiter.Issues != PcmPeakIssue.None || analysis.Processed.Issues != PcmPeakIssue.None ||
-        analysis.PreLimiter.ObservedFrames != analysis.ExpectedFrames || analysis.Processed.ObservedFrames != analysis.ExpectedFrames
-            || analysis.Diagnostics?.Matches(analysis) == false ? "incomplete" : analysis.SourceVerified ? "complete" : "source_coverage_unverified";
+    internal static string Status(PcmSamplePeakAnalysis analysis) =>
+        !ChannelRender.HasCompleteFrames(analysis) || analysis.Diagnostics?.Matches(analysis) == false ? "incomplete" : analysis.SourceVerified ? "complete" : "source_coverage_unverified";
 
     internal static string SaveCsv(string source, PcmSamplePeakAnalysis analysis, IReadOnlyList<PostRenderReport.QualityMetric> quality) {
         string path = OutputBase(source, analysis) + ".csv";
@@ -74,6 +81,8 @@ internal static class PcmPeakExport {
                 rate > 0 ? Math.Min(analysis.PreLimiter.ObservedFrames, analysis.Processed.ObservedFrames) / (double)rate : null,
                 Status(analysis), analysis.Diagnostics == null ? "disabled" : analysis.Diagnostics.Matches(analysis) ? "matched" : "mismatch",
                 analysis.PreLimiter.Issues, analysis.Processed.Issues];
+            ListenerGainInfo? gain = analysis.ListenerGain;
+            object[] gainFields = [gain?.Mode, gain?.RequestedDb, gain?.AutomaticSafeGain, gain?.Effective, gain?.EffectiveDb];
             void PeakRow(string kind, int? slot, string label, int preSlot, int postSlot) {
                 PcmSignalLevel pre = slot.HasValue ? analysis.PreLimiter.ChannelLevel(slot.Value - 1) : analysis.PreLimiter.OverallLevel();
                 PcmSignalLevel post = slot.HasValue ? analysis.Processed.ChannelLevel(slot.Value - 1) : analysis.Processed.OverallLevel();
@@ -85,7 +94,7 @@ internal static class PcmPeakExport {
                     pre.Rms, pre.RmsDbfs, post.Rms, post.RmsDbfs,
                     pre.Active60, pre.Active40, post.Active60, post.Active40,
                     PcmSamplePeakAccumulator.ActivityWindowMs, PcmSamplePeakAccumulator.ActivityThreshold60,
-                    PcmSamplePeakAccumulator.ActivityThreshold40
+                    PcmSamplePeakAccumulator.ActivityThreshold40, .. gainFields
                 ]);
             }
             for (int slot = 0; slot < analysis.Labels.Length; slot++) {
@@ -99,6 +108,7 @@ internal static class PcmPeakExport {
                 row[qualityColumn] = metric.Name;
                 row[qualityColumn + 1] = metric.Db;
                 row[qualityColumn + 2] = metric.Grade;
+                gainFields.CopyTo(row, gainColumn);
                 WriteRow(writer, row);
             }
         });

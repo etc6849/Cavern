@@ -41,6 +41,12 @@ public class RenderReportStringsHU : RenderReportStrings {
         Set("PcmVerification", "A csúcsok ellenőrzése");
         Set("PcmMatched", "Egyezik");
         Set("PcmMismatch", "Nem egyezik");
+        Set("PcmListenerGain", "Hallgató erősítése");
+        Set("PcmGainOverride", "Kézi felülbírálás");
+        Set("PcmGainAuto", "Automatikus");
+        Set("PcmGainRequested", "Kért");
+        Set("PcmGainSafe", "Automatikus biztonsági szorzó");
+        Set("PcmGainEffective", "Tényleges");
         Set("PcmNA", "Nem érhető el");
         Set("PcmMissingBlock", "Egy vagy több várt PCM-mintakeret hiányzik vagy érvénytelen.");
         Set("PcmInvalidBuffer", "Egy blokk mérete vagy a mérési hívások száma eltért a várttól.");
