@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   package:
@@ -95,6 +96,7 @@ jobs:
           Write-Host "::notice title=Cavernize Release ZIP SHA-256::$hash"
 
       - name: Upload Cavernize Windows test build
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: Cavernize-Test-win-x64-Release
@@ -105,20 +107,36 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-      - name: Download the uploaded artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Cavernize-Test-win-x64-Release
-          path: ${{ runner.temp }}/Cavernize-artifact-check
-
       - name: Verify the downloaded Release ZIP checksum
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAVERNIZE_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          CAVERNIZE_ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $outerZip = Join-Path $env:RUNNER_TEMP 'Cavernize-artifact.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'Cavernize-artifact-check'
+          $uri = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:CAVERNIZE_ARTIFACT_ID/zip"
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $uri -Headers $headers -OutFile $outerZip -TimeoutSec 120
+              break
+            } catch {
+              if ($attempt -eq 3) {
+                Write-Host "::error title=Artifact download check::$($_.Exception.Message)"
+                throw
+              }
+              Start-Sleep -Seconds 10
+            }
+          }
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($outerZip, $destination)
           $fileName = 'Cavernize-Test-win-x64-Release.zip'
           $original = Join-Path $env:RUNNER_TEMP $fileName
-          $downloaded = Join-Path $env:RUNNER_TEMP "Cavernize-artifact-check/$fileName"
+          $downloaded = Join-Path $destination $fileName
           $expected = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
           $actual = (Get-FileHash -LiteralPath $downloaded -Algorithm SHA256).Hash
           $sidecar = (Get-Content -LiteralPath "$downloaded.sha256").Split(' ')[0]
           if ($actual -ne $expected -or $actual -ne $sidecar) { throw 'Downloaded artifact checksum mismatch' }
+          "[Download the verified Windows Release artifact]($env:CAVERNIZE_ARTIFACT_URL)" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
