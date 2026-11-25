@@ -37,6 +37,10 @@ partial class MainWindow {
         if (tracks.SelectedItem == null) {
             throw new TrackException(language["LdSrc"]);
         }
+        if (!reportMode.IsChecked && !explicitAnalysisTrack && (grading.IsChecked || verifyPeakEvents.IsChecked) &&
+            LoadedFile != null && (Path.GetExtension(LoadedFile.Path).ToLowerInvariant() is ".mkv" or ".mka")) {
+            tracks.SelectedItem = IntegratedAnalysis.SelectTrack(LoadedFile, null);
+        }
 
         if (!((CavernizeTrack)tracks.SelectedItem).Supported) {
             throw new TrackException(language["UnTrk"]);

@@ -57,7 +57,9 @@ $ambiguous = Join-Path $movieDir 'Two TrueHD tracks.mka'
 $sine = 'sine=frequency=401:sample_rate=48000:d=0.333'
 $null = Invoke-Checked 'ffmpeg' @('-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=96x48:r=25:d=0.32', '-f', 'lavfi', '-i', $sine,
     '-i', $stream, '-i', $subtitle, '-f', 'ffmetadata', '-i', $chapters, '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:s',
-    '-map_metadata', '4', '-map_chapters', '4', '-c:v', 'ffv1', '-color_primaries', 'bt2020', '-color_trc', 'smpte2084',
+    '-map_metadata', '4', '-map_chapters', '4', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-bf', '0',
+    '-x265-params', 'pools=1:frame-threads=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc',
+    '-color_primaries', 'bt2020', '-color_trc', 'smpte2084',
     '-colorspace', 'bt2020nc', '-c:a:0', 'pcm_s16le', '-c:a:1', 'copy', '-c:s', 'srt',
     '-metadata:s:a:1', 'language=eng', '-metadata:s:a:1', 'title=Atmos fixture', '-attach', $attachment,
     '-metadata:s:t:0', 'mimetype=text/plain', $mkv)
@@ -136,6 +138,14 @@ Assert-Equal $mediaIntermediates.Count 4 'TrueHDD media intermediates beside the
 $null = Invoke-Checked $Executable (@('--input', $mkv, '--output', $encoded, '-f', 'FLAC',
     '--quality', '--verify-peak-events') + $decoderFlag + $mediaArgs)
 Assert-Equal @(Get-ChildItem -LiteralPath $movieDir -Filter '_extracted-*' -File).Count 4 'Media export cleans only its own intermediates'
+$mkaWav = Join-Path $outputDir 'Rendered from MKA.wav'
+$null = Invoke-Checked $Executable (@('--input', $mka, '--output', $mkaWav, '-f', 'PCM_Float', '--quality',
+    '--verify-peak-events') + $decoderFlag + $mediaArgs)
+$mkaMedia = @(Overall ([IO.Path]::ChangeExtension($mka, '.csv')) | Where-Object {
+    ($_.render_settings | ConvertFrom-Json).ExportCodec -eq 'PCM_Float'
+})
+Assert-Equal $mkaMedia.Count 1 'Integrated CSV written for MKA media export'
+Assert-Equal $mkaMedia[0].verification 'matched' 'MKA media export verified'
 if (Test-Path -LiteralPath $unusedSsd) { throw 'Media export used the analysis SSD' }
 
 $videoPackets = @('-select_streams', 'v:0', '-show_packets', '-show_data_hash', 'sha256',
@@ -152,6 +162,10 @@ foreach ($item in @(@($native, 'pcm_f32le', 'f32le', $nativeWav, 4), @($encoded,
     Assert-Equal ([string]$audio[0].sample_rate) '48000' 'Export sample rate'
     Assert-Equal $audio[0].channels 8 'Export channel count'
     Assert-Equal $audio[0].tags.language 'eng' 'Language'
+    $originalAtmos = $original.streams | Where-Object codec_name -eq 'truehd'
+    if ([Math]::Abs([double]$audio[0].start_time - [double]$originalAtmos.start_time) -gt 0.002) {
+        throw 'Rendered audio start does not align with the original selected track.'
+    }
     Assert-Equal $audio[0].tags.CAVERNIZE_CHANNEL_ORDER 'Front left,Front right,Front center,LFE,Side left,Side right,Top rear left,Top rear right' 'Applied channel order'
     Assert-Equal $probe.format.tags.title $original.format.tags.title 'Title'
     Assert-Equal $probe.streams[0].color_primaries 'bt2020' 'HDR colour primaries'
