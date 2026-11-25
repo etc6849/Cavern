@@ -287,9 +287,15 @@ namespace Cavern {
             // Collect audio data from sources
             LinkedListNode<Source> node = activeSources.First;
             results.Clear();
+            if (TracePcmSources) {
+                tracedSources.Clear();
+            }
             while (node != null) {
                 if (node.Value.Precollect()) {
                     results.Add(node.Value.Collect());
+                    if (TracePcmSources) {
+                        tracedSources.Add(node.Value);
+                    }
                 }
                 node = node.Next;
             }
@@ -298,6 +304,10 @@ namespace Cavern {
             Array.Clear(renderBuffer, 0, renderBuffer.Length);
             for (int result = 0; result < results.Count; result++) {
                 WaveformUtils.Mix(results[result], renderBuffer);
+            }
+
+            if (TracePcmSources) {
+                CapturePcmFilterStates();
             }
 
             // Volume and subwoofers' lowpass
@@ -315,7 +325,10 @@ namespace Cavern {
 
             if (Normalizer != 0) { // Normalize
                 normalizer.decayFactor = Normalizer * UpdateRate / SampleRate;
-                normalizer.Process(renderBuffer);
+                Normalizer.BlockState state = normalizer.ProcessWithState(renderBuffer);
+                ObservePostLimiterPcm?.Invoke(renderBuffer, state);
+            } else if (ObservePostLimiterPcm != null) {
+                ObservePostLimiterPcm(renderBuffer, new Normalizer.BlockState(Filters.Normalizer.GetBlockMaximum(renderBuffer), 1, false));
             }
             return renderBuffer;
         }

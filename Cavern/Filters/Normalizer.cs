@@ -30,8 +30,19 @@ namespace Cavern.Filters {
         /// </summary>
         public Normalizer(bool limiterOnly) => this.limiterOnly = limiterOnly;
 
-        /// <inheritdoc/>
-        public override void Process(float[] samples) {
+        internal readonly struct BlockState {
+            public float Maximum { get; }
+            public float Gain { get; }
+            public bool Attacked { get; }
+
+            internal BlockState(float maximum, float gain, bool attacked) {
+                Maximum = maximum;
+                Gain = gain;
+                Attacked = attacked;
+            }
+        }
+
+        internal static float GetBlockMaximum(float[] samples) {
             float max = Math.Abs(samples[0]), absSample;
             for (int sample = 1; sample < samples.Length; sample++) {
                 absSample = Math.Abs(samples[sample]);
@@ -39,15 +50,26 @@ namespace Cavern.Filters {
                     max = absSample;
                 }
             }
-            if (max * lastGain > 1) { // Attack
+            return max;
+        }
+
+        /// <inheritdoc/>
+        public override void Process(float[] samples) => ProcessWithState(samples);
+
+        internal BlockState ProcessWithState(float[] samples) {
+            float max = GetBlockMaximum(samples);
+            bool attacked = max * lastGain > 1;
+            if (attacked) {
                 lastGain = .9f / max;
             }
             WaveformUtils.Gain(samples, lastGain); // Normalize last samples
+            BlockState state = new BlockState(max, lastGain, attacked);
             // Decay
             lastGain += decayFactor;
             if (limiterOnly && lastGain > 1) {
                 lastGain = 1;
             }
+            return state;
         }
 
         /// <inheritdoc/>

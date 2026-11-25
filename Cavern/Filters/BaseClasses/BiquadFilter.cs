@@ -135,6 +135,42 @@ namespace Cavern.Filters {
             Reset(centerFreq, q, gain);
         }
 
+        internal struct PcmFilterState {
+            readonly float a1, a2, b0, b1, b2;
+            float x1, x2, y1, y2;
+
+            public float A1 => a1;
+            public float A2 => a2;
+            public float B0 => b0;
+            public float B1 => b1;
+            public float B2 => b2;
+            public float X1 => x1;
+            public float X2 => x2;
+            public float Y1 => y1;
+            public float Y2 => y2;
+
+            internal PcmFilterState(BiquadFilter filter) {
+                a1 = filter.a1;
+                a2 = filter.a2;
+                b0 = filter.b0;
+                b1 = filter.b1;
+                b2 = filter.b2;
+                x1 = filter.x1;
+                x2 = filter.x2;
+                y1 = filter.y1;
+                y2 = filter.y2;
+            }
+
+            internal float Process(float input) {
+                float output = b2 * x2 + b1 * x1 + b0 * input - a1 * y1 - a2 * y2;
+                y2 = y1;
+                y1 = output;
+                x2 = x1;
+                x1 = input;
+                return output;
+            }
+        }
+
         /// <inheritdoc/>
         public override void Process(float[] samples, int channel, int channels) {
             for (int sample = channel; sample < samples.Length; sample += channels) {

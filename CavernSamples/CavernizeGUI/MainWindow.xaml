@@ -37,6 +37,8 @@
                 <MenuItem Header="{StaticResource SMetH}" ToolTip="{StaticResource SMetT}" Click="ShowMetadata"/>
                 <MenuItem Name="reportMode" IsCheckable="True" Header="{StaticResource ReMoH}" ToolTip="{StaticResource ReMoT}"/>
                 <MenuItem Name="grading" IsCheckable="True" Header="{StaticResource DeGrH}" ToolTip="{StaticResource DeGrT}"/>
+                <MenuItem Name="verifyPeakEvents" IsCheckable="True" Header="Verify PCM peak events (Atmos)"
+                          ToolTip="Independently scan the render and save source-contribution evidence beside the Atmos file."/>
                 <MenuItem Header="{StaticResource PReSh}" Click="ShowPostRenderReport"/>
             </MenuItem>
             <MenuItem Name="languages" Style="{StaticResource RootMenuItem}">

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 using Cavern.Channels;
@@ -28,6 +29,8 @@ namespace Cavern.Format.Renderers {
         /// </summary>
         readonly int[] movementFrames;
 
+        internal IReadOnlyList<int> AtmosSourceIds { get; }
+
         internal bool? HasCompletePcmPayload => stream is CoreAudioFormatDecoder caf ? (bool?)caf.HasCompletePcmPayload : null;
 
         /// <summary>
@@ -47,6 +50,7 @@ namespace Cavern.Format.Renderers {
 
             DolbyAtmosMasterFormatRootFile root = new DolbyAtmosMasterFormatRootFile(rootSource, Channels);
             channels = root.Channels;
+            AtmosSourceIds = root.ObjectMapping;
             Vector3[] positions = ChannelPrototype.ToAlternativePositions(channels);
             for (int i = 0; i < channels.Length; i++) {
                 objects[i].Position = positions[i] * Listener.EnvironmentSize;

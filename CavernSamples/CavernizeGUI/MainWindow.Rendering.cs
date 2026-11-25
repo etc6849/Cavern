@@ -1,5 +1,6 @@
 ﻿using System;
 
+using Cavern;
 using Cavern.Format;
 using Cavern.Format.Common;
 using Cavern.Format.Container;
@@ -118,9 +119,12 @@ partial class MainWindow {
 
         taskEngine.Progress = 0;
         taskEngine.UpdateStatus(language["Start"]);
-        RenderTarget renderTargetRef = Dispatcher.Invoke(() => RenderTarget);
-        PcmSamplePeakAnalysis peaks = new(environment.Listener, target.Length, renderTargetRef);
+        var (renderTargetRef, verify) = Dispatcher.Invoke(() => (RenderTarget, verifyPeakEvents.IsChecked));
         CavernizeTrack renderedTrack = external.GetRenderedTrack(target);
+        string source = target.AtmosSourcePath;
+        bool exportAnalysis = source != null;
+        PcmPeakDiagnostics diagnostics = exportAnalysis && verify ? new(Listener.Channels.Length, renderedTrack) : null;
+        PcmSamplePeakAnalysis peaks = new(environment.Listener, target.Length, renderTargetRef, diagnostics);
         try {
             peaks.CheckSource(renderedTrack, ReferenceEquals(target, renderedTrack));
             RenderStats stats = WriteRender(target, writer, renderTargetRef, peaks);
@@ -129,8 +133,15 @@ partial class MainWindow {
         } catch {
             peaks.Flag(PcmPeakIssue.Interrupted);
             report.GenerateInterrupted(peaks);
+            if (exportAnalysis) {
+                SavePeakAnalysis(source, peaks);
+            }
             external.Dispose();
             throw;
+        }
+
+        if (exportAnalysis) {
+            SavePeakAnalysis(source, peaks);
         }
 
         string targetCodec = null;
@@ -155,6 +166,21 @@ partial class MainWindow {
 
         external.Dispose();
         FinishTask(target);
+    }
+
+    void SavePeakAnalysis(string source, PcmSamplePeakAnalysis peaks) {
+        void Save(Func<string> write) {
+            try {
+                write();
+            } catch (Exception e) {
+                Dispatcher.Invoke(() => Error($"Could not save peak analysis beside {source}.\n{e.Message}"));
+            }
+        }
+
+        Save(() => PcmPeakExport.SaveCsv(source, peaks, report.Quality));
+        if (peaks.Diagnostics != null) {
+            Save(() => PcmPeakExport.SaveEvidence(source, peaks));
+        }
     }
 
     /// <summary>

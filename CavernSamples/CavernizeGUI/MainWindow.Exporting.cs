@@ -99,16 +99,20 @@ partial class MainWindow {
     /// </summary>
     RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget, PcmSamplePeakAnalysis peaks) {
         Listener listener = environment.Listener;
-        if (listener.ObservePreLimiterPcm != null) {
+        if (listener.ObservePreLimiterPcm != null || listener.ObservePostLimiterPcm != null) {
             throw new InvalidOperationException("The listener already has a PCM observer.");
         }
 
         bool virtualizerState = Listener.HeadphoneVirtualizer;
         listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
+        listener.ObservePostLimiterPcm = peaks.ObservePostLimiter;
+        listener.TracePcmSources = peaks.Diagnostics != null;
         try {
             return WriteRender(target, writer, renderTarget, peaks, listener);
         } finally {
             listener.ObservePreLimiterPcm = null;
+            listener.ObservePostLimiterPcm = null;
+            listener.ClearPcmSourceTrace();
             if (virtualizerState) {
                 Listener.HeadphoneVirtualizer = true;
             }

@@ -14,6 +14,8 @@ namespace Cavern.Format {
         /// </summary>
         readonly YAML root;
 
+        internal string MasterPath { get; }
+
         /// <summary>
         /// Object movement data.
         /// </summary>
@@ -23,6 +25,7 @@ namespace Cavern.Format {
         /// Decodes and renders Dolby Atmos Master Format files.
         /// </summary>
         public DolbyAtmosMasterFormatReader(string path) : base(null, false) {
+            MasterPath = System.IO.Path.GetFullPath(path);
             root = new YAML(File.ReadAllText(path));
             metadata = new YAML(File.ReadAllText(path + ".metadata"));
 

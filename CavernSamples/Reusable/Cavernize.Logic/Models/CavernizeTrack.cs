@@ -71,6 +71,8 @@ public class CavernizeTrack : IDisposable, IMetadataSupplier {
     /// </summary>
     public string Path => reader.Path;
 
+    internal string AtmosSourcePath => (reader as DolbyAtmosMasterFormatReader)?.MasterPath;
+
     /// <summary>
     /// Raw access to the track's stream.
     /// </summary>

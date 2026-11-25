@@ -1,5 +1,6 @@
 using Cavern;
 using Cavern.Channels;
+using Cavern.Filters;
 using Cavern.Format.Renderers;
 
 using Cavernize.Logic.Models.RenderTargets;
@@ -22,10 +23,17 @@ internal sealed class PcmSamplePeakAnalysis {
     readonly int updateRate;
     readonly int sampleRate;
     long nextFrame;
+    long blockStart;
+    Normalizer.BlockState? limiter;
     int validFrames;
     bool sawPreLimiter;
     bool layoutChanged;
 
+    internal Guid AnalysisId { get; } = Guid.NewGuid();
+    internal int SampleRate => sampleRate;
+    internal string LayoutId { get; }
+    internal string LayoutName { get; }
+    internal PcmPeakDiagnostics Diagnostics { get; }
     internal long ExpectedFrames { get; }
     internal Exception PreLimiterError { get; private set; }
     internal bool SourceVerified { get; private set; }
@@ -33,8 +41,9 @@ internal sealed class PcmSamplePeakAnalysis {
     internal PcmSamplePeakAccumulator PreLimiter { get; }
     internal PcmSamplePeakAccumulator Processed { get; }
 
-    internal PcmSamplePeakAnalysis(Listener listener, long expectedFrames, RenderTarget target) {
+    internal PcmSamplePeakAnalysis(Listener listener, long expectedFrames, RenderTarget target, PcmPeakDiagnostics diagnostics = null) {
         this.listener = listener;
+        Diagnostics = diagnostics;
         ExpectedFrames = expectedFrames;
         updateRate = listener.UpdateRate;
         sampleRate = listener.SampleRate;
@@ -46,6 +55,14 @@ internal sealed class PcmSamplePeakAnalysis {
         for (int i = 0; i < layout.Length; i++) {
             slots[i] = new OutputSlot(layout[i]);
             Labels[i] = GetLabel(layout[i], target);
+        }
+        LayoutName = target?.Name ?? "Listener layout";
+        LayoutId = PcmPeakExport.SafeComponent(LayoutName);
+        if (target == null || target is DriverRenderTarget or VirtualizerRenderTarget || target.Channels.Length != layout.Length ||
+            target.Channels.Where((channel, i) => !StandardPosition(channel).Equals(layout[i])).Any()) {
+            string geometry = string.Join(";", slots.Select(slot =>
+                FormattableString.Invariant($"{slot.Elevation:R},{slot.Azimuth:R},{slot.Lfe}")));
+            LayoutId += "-" + PcmPeakExport.ShortHash(geometry);
         }
         if (expectedFrames <= 0 || updateRate <= 0 || sampleRate <= 0) {
             Flag(PcmPeakIssue.SourceLengthMismatch);
@@ -70,6 +87,9 @@ internal sealed class PcmSamplePeakAnalysis {
         if (startFrame != nextFrame || startFrame < 0 || startFrame >= ExpectedFrames) {
             Flag(PcmPeakIssue.MissingBlock);
         }
+        blockStart = startFrame;
+        limiter = null;
+        Diagnostics?.DiscardBlock();
         validFrames = (int)Math.Clamp(ExpectedFrames - startFrame, 0, Math.Max(0, updateRate));
         nextFrame = startFrame + validFrames;
         sawPreLimiter = false;
@@ -98,7 +118,22 @@ internal sealed class PcmSamplePeakAnalysis {
         sawPreLimiter = true;
         CheckLayout();
         if (!layoutChanged) {
-            PreLimiter.Stage(pcm, updateRate, validFrames);
+            PreLimiter.Stage(pcm, updateRate, validFrames, blockStart);
+            if (pcm.Length == updateRate * slots.Length && validFrames > 0) {
+                Diagnostics?.TryScan(pcm, blockStart, validFrames, listener);
+            }
+        }
+    }
+
+    internal void ObservePostLimiter(ReadOnlySpan<float> pcm, Normalizer.BlockState state) {
+        if (sawPreLimiter && pcm.Length == updateRate * slots.Length) {
+            limiter = state;
+            try {
+                PreLimiter.PairLimiterBlock(pcm, blockStart, state);
+            } catch (Exception e) {
+                PreLimiterError = e;
+                PreLimiter.Flag(PcmPeakIssue.MeasurementError);
+            }
         }
     }
 
@@ -111,11 +146,12 @@ internal sealed class PcmSamplePeakAnalysis {
 
         if (sawPreLimiter && PreLimiterError == null) {
             PreLimiter.CommitBlock();
+            Diagnostics?.CommitBlock();
         } else {
             PreLimiter.Flag(PcmPeakIssue.MissingBlock);
         }
-        Processed.Stage(pcm, updateRate, validFrames);
-        Processed.CommitBlock();
+        Processed.Stage(pcm, updateRate, validFrames, blockStart);
+        Processed.CommitBlock(limiter);
     }
 
     internal void RejectRenderedBlock() {
@@ -143,6 +179,9 @@ internal sealed class PcmSamplePeakAnalysis {
             Flag(PcmPeakIssue.LayoutChanged);
         }
     }
+
+    static Channel StandardPosition(ReferenceChannel channel) =>
+        new(ChannelPrototype.AlternativePositions[(int)channel], channel == ReferenceChannel.ScreenLFE);
 
     static string GetLabel(Channel channel, RenderTarget target) {
         if (channel.LFE) {
