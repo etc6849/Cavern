@@ -20,7 +20,7 @@
         <Menu DockPanel.Dock="Top">
             <MenuItem Style="{StaticResource RootMenuItem}" SubmenuOpened="RenderingSettingsOpened">
                 <MenuItem.Header>
-                    <uc:TextWithIcon Text="{StaticResource MenuR}" Icon="/Resources/Images/Settings.png"/>
+                    <uc:TextWithIcon Text="{StaticResource MenuR}" Icon="/CavernizeGUI;component/Resources/Images/Settings.png"/>
                 </MenuItem.Header>
                 <MenuItem Header="{StaticResource Upmix}" Click="OpenUpmixSetup"/>
                 <MenuItem Name="hrir" Header="{StaticResource LoadV}" Click="LoadHRIR"/>
@@ -43,7 +43,7 @@
             </MenuItem>
             <MenuItem Name="languages" Style="{StaticResource RootMenuItem}">
                 <MenuItem.Header>
-                    <uc:TextWithIcon Text="{StaticResource MenuL}" Icon="/Resources/Images/Language.png"/>
+                    <uc:TextWithIcon Text="{StaticResource MenuL}" Icon="/CavernizeGUI;component/Resources/Images/Language.png"/>
                 </MenuItem.Header>
                 <MenuItem Header="{StaticResource LanEn}" Click="LanguageEnglish"/>
                 <MenuItem Header="{StaticResource LanHu}" Click="LanguageHungarian"/>
@@ -51,7 +51,7 @@
             </MenuItem>
             <MenuItem Style="{StaticResource RootMenuItem}">
                 <MenuItem.Header>
-                    <uc:TextWithIcon Text="{StaticResource MenuH}" Icon="/Resources/Images/Help.png"/>
+                    <uc:TextWithIcon Text="{StaticResource MenuH}" Icon="/CavernizeGUI;component/Resources/Images/Help.png"/>
                 </MenuItem.Header>
                 <MenuItem Name="checkUpdates" IsCheckable="True" Header="{StaticResource ChkUp}" ToolTip="{StaticResource ChkTt}"/>
                 <Separator/>
@@ -106,7 +106,7 @@
                         <Grid AllowDrop="True" DragEnter="FileDragEnter" DragOver="FileDragOver" Drop="DropFile">
                             <TextBlock Margin="0" Style="{StaticResource Header}" Text="{StaticResource CoPro}"/>
                             <uc:ButtonWithIcon Margin="10,27,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Width="110"
-                                               Text="{StaticResource OpCnt}" Icon="/Resources/Images/Folder.png" Click="OpenFile"/>
+                                               Text="{StaticResource OpCnt}" Icon="/CavernizeGUI;component/Resources/Images/Folder.png" Click="OpenFile"/>
                             <TextBlock Name="fileName" Margin="125,34,10,0" VerticalAlignment="Top" TextWrapping="NoWrap"/>
                             <Grid Name="trackControls" Margin="20,77,20,10">
                                 <TextBlock Margin="0,3,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Width="50"
@@ -121,9 +121,9 @@
                             </Grid>
                             <Grid Margin="10,0,10,10" VerticalAlignment="Bottom">
                                 <uc:ButtonWithIcon HorizontalAlignment="Left" VerticalAlignment="Center" MinWidth="150"
-                                                   Text="{StaticResource QuAdd}" Icon="/Resources/Images/AddToQueue.png" Click="Queue"/>
+                                                   Text="{StaticResource QuAdd}" Icon="/CavernizeGUI;component/Resources/Images/AddToQueue.png" Click="Queue"/>
                                 <uc:ButtonWithIcon HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="150" Height="40" Primary="True"
-                                                   Text="{StaticResource OpRnd}" Icon="/Resources/Images/Render.png" Click="Render"/>
+                                                   Text="{StaticResource OpRnd}" Icon="/CavernizeGUI;component/Resources/Images/Render.png" Click="Render"/>
                             </Grid>
                         </Grid>
                     </Grid>
@@ -140,9 +140,9 @@
                         <ListBox Name="queuedJobs" Margin="10,45,10,70" Template="{DynamicResource QueueListBox}"
                                  AllowDrop="True" DragEnter="FileDragEnter" DragOver="FileDragOver" Drop="QueueDrop"/>
                         <uc:ButtonWithIcon Margin="10,0,0,15" HorizontalAlignment="Left" VerticalAlignment="Bottom" MinWidth="150"
-                                           Text="{StaticResource QuRem}" Icon="/Resources/Images/Delete.png" Click="RemoveQueued"/>
+                                           Text="{StaticResource QuRem}" Icon="/CavernizeGUI;component/Resources/Images/Delete.png" Click="RemoveQueued"/>
                         <uc:ButtonWithIcon Margin="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" MinWidth="150" Height="40" Primary="True"
-                                           Text="{StaticResource QuSta}" Icon="/Resources/Images/RenderQueue.png" Click="StartQueue"/>
+                                           Text="{StaticResource QuSta}" Icon="/CavernizeGUI;component/Resources/Images/RenderQueue.png" Click="StartQueue"/>
                     </Grid>
                 </Grid>
             </Grid>

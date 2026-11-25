@@ -23,19 +23,38 @@ internal static class ChannelRender {
     /// <summary>
     /// Renders a listener to a file, and returns some measurements of the render.
     /// </summary>
-    internal static RenderStats Run(Listener listener, CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget,
-        PcmSamplePeakAnalysis peaks, RenderingSettings settings, bool grading, bool speakerVirtualizer, int blockSize,
-        Action progress, Action<Exception, long> renderError) {
+    internal static RenderStats Run(ConversionEnvironment environment, CavernizeTrack target, CavernizeTrack renderedTrack,
+        AudioWriter writer, RenderTarget renderTarget, RenderingSettings settings, bool grading, bool verify, bool speakerVirtualizer,
+        int blockSize, Action progress, Action<Exception, long> renderError, out PcmSamplePeakAnalysis peaks) {
+        Listener listener = environment.Listener;
         if (listener.ObservePreLimiterPcm != null || listener.ObservePostLimiterPcm != null) {
             throw new InvalidOperationException("The listener already has a PCM observer.");
         }
 
         bool virtualizerState = Listener.HeadphoneVirtualizer;
-        listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
-        listener.ObservePostLimiterPcm = peaks.ObservePostLimiter;
-        listener.TracePcmSources = peaks.Diagnostics != null;
         try {
-            return RenderBlocks(listener, target, writer, renderTarget, peaks, settings, grading, speakerVirtualizer, blockSize, progress, renderError);
+            // Apply the same virtual speaker layout used by the writer before taking the measurement snapshot.
+            VirtualizerFilter virtualizer = null;
+            Normalizer normalizer = null;
+            if (virtualizerState || speakerVirtualizer) {
+                Listener.HeadphoneVirtualizer = false;
+                virtualizer = new VirtualizerFilter();
+                virtualizer.SetLayout();
+                normalizer = new Normalizer(true) {
+                    decayFactor = 10 * (float)listener.UpdateRate / listener.SampleRate
+                };
+            }
+
+            bool direct = ReferenceEquals(target, renderedTrack);
+            peaks = CreateAnalysis(environment, target, renderedTrack, renderTarget, verify);
+            peaks.CheckSource(renderedTrack, direct);
+            listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
+            listener.ObservePostLimiterPcm = peaks.ObservePostLimiter;
+            listener.TracePcmSources = peaks.Diagnostics != null;
+            RenderStats stats = RenderBlocks(listener, target, writer, renderTarget, peaks, settings, grading, virtualizer, normalizer,
+                blockSize, progress, renderError);
+            peaks.CheckSource(renderedTrack, direct);
+            return stats;
         } finally {
             listener.ObservePreLimiterPcm = null;
             listener.ObservePostLimiterPcm = null;
@@ -47,23 +66,10 @@ internal static class ChannelRender {
     }
 
     static RenderStats RenderBlocks(Listener listener, CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget,
-        PcmSamplePeakAnalysis peaks, RenderingSettings settings, bool grading, bool speakerVirtualizer, int blockSize,
-        Action progress, Action<Exception, long> renderError) {
+        PcmSamplePeakAnalysis peaks, RenderingSettings settings, bool grading, VirtualizerFilter virtualizer, Normalizer normalizer,
+        int blockSize, Action progress, Action<Exception, long> renderError) {
         RenderStats stats = grading ? new RenderStatsEx(listener) : new RenderStats(listener);
         bool customMuting = settings.MuteBed || settings.MuteGround;
-
-        // Virtualization is done with the buffer instead of each update in the listener to optimize FFT sizes
-        VirtualizerFilter virtualizer = null;
-        Normalizer normalizer = null;
-        bool virtualizerState = Listener.HeadphoneVirtualizer;
-        if (virtualizerState || speakerVirtualizer) {
-            Listener.HeadphoneVirtualizer = false;
-            virtualizer = new VirtualizerFilter();
-            virtualizer.SetLayout();
-            normalizer = new Normalizer(true) {
-                decayFactor = 10 * (float)listener.UpdateRate / listener.SampleRate
-            };
-        }
 
         int cachePosition = 0;
         // Preserve the writer's original cache size and channel stride.

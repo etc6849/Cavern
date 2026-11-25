@@ -90,6 +90,26 @@ public class CavernizeCli_Tests {
     }
 
     [TestMethod]
+    public async Task HeadphoneReportDescribesTheAppliedVirtualSpeakerLayout() {
+        string dir = CreateFixture(out string input);
+        try {
+            await Invoke(0, ["--input", input, "--layout", "Headphone Virtualizer", .. AnalysisOptions]);
+            string csv = Directory.EnumerateFiles(dir, "ListenerGain-Headphone-Virtualizer-*-PeakAnalysis.csv").Single();
+            string id = Path.GetFileName(csv)["ListenerGain-".Length..^"-PeakAnalysis.csv".Length];
+            var rows = ReadReport(dir, id);
+            var overall = Overall(rows);
+            Assert.AreEqual("complete", overall["status"]);
+            Assert.AreEqual("matched", overall["verification"]);
+            Assert.AreEqual("5381", overall["pre_frames"]);
+            Assert.AreEqual("5381", overall["post_frames"]);
+            Assert.AreEqual(16, rows.Count(x => x["row_type"] == "channel"));
+            Assert.IsFalse(Directory.EnumerateFiles(dir, "*.wav").Any());
+        } finally {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [TestMethod]
     public async Task ReportOnlyWorksWithoutOptionalAnalysisAndReportsAnUnwritableDestination() {
         string dir = CreateFixture(out string input);
         try {

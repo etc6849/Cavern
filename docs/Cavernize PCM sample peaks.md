@@ -5,6 +5,8 @@ The post-render report includes two sections for channel renders, including Repo
 - **Before the listener limiter** measures spatially rendered and summed speaker PCM after LFE filtering and listener gain. It can report positive dBFS when a sample exceeds unity.
 - **Processed listener PCM before export** measures the buffer returned by the listener after limiting and any listener-side convolution. Export rematrixing, export virtualization and its separate limiter, quantization, and encoding are downstream.
 
+When export virtualization is selected, the measurements describe its virtual speaker inputs at these same taps. A headphone render therefore lists the applied virtual speakers, before the later stereo fold-down.
+
 These are discrete sample peaks relative to unity. The overall value is the largest channel peak. A valid silent channel reports `−∞ dBFS`. The report keeps the previous RMS-based fields and grades. Neither sample-peak section measures the output of an external processor such as the Trinnov AltitudeCI.
 
 The rows follow the actual listener order. For **5.1.6 with top sides**, the default order is front left/right/center, LFE, side left/right, top front left/right, top side left/right, and top rear left/right. The existing surround swap exchanges 1-based slots 5 and 7 and slots 6 and 8. On this preset that swaps the side and top-front pairs.

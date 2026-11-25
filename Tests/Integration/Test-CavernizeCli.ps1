@@ -74,6 +74,15 @@ $null = Assert-Report '5.1.2-side-ListenerGain-m3dB' .707 ([Math]::Pow(10, -3.0 
 $null = Invoke-Cli 0 (@('--input', $source, '--layout', '5.1.2 side', '--listener-gain-db', '8') + $common)
 $boost = Assert-Report '5.1.2-side-ListenerGain-8dB' .707 ([Math]::Pow(10, 8.0 / 20)) 8 'Explicit override'
 if ($boost.pre_block_attack -ne 'True' -or [double]$boost.post_abs_linear -gt 1) { throw 'Limiter did not engage' }
+$null = Invoke-Cli 0 (@('--input', $source, '--layout', 'Headphone Virtualizer') + $common)
+$virtualReport = @(Get-ChildItem $WorkDirectory -Filter 'ListenerGain-Headphone-Virtualizer-*-PeakAnalysis.csv' -File)
+if ($virtualReport.Count -ne 1) { throw 'Missing headphone analysis' }
+$virtualRows = @(Import-Csv $virtualReport[0].FullName)
+$virtualSummary = $virtualRows | Where-Object row_type -eq 'overall'
+if ($virtualSummary.status -ne 'complete' -or $virtualSummary.verification -ne 'matched' -or
+    $virtualSummary.pre_frames -ne '5381' -or @($virtualRows | Where-Object row_type -eq 'channel').Count -ne 16) {
+    throw 'Unexpected headphone analysis coverage or channel map'
+}
 if (@(Get-ChildItem $WorkDirectory -Include *.wav, *.mka, *.mkv -File -Recurse).Count -ne 0) { throw 'Report Only created audio output' }
 $null = Invoke-Cli 2 @('--input', $source, '--layout', '5.1.6', '--report-only')
 $null = Invoke-Cli 2 @('--input', $source, '--layout', 'no-such-layout', '--report-only')

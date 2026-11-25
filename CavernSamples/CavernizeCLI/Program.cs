@@ -92,11 +92,10 @@ public class Program : ICavernizeApp {
         Rendering = true;
         try {
             environment.AttachToListener(target);
-            PcmSamplePeakAnalysis peaks = ChannelRender.CreateAnalysis(environment, target, target, RenderTarget, Verification);
+            PcmSamplePeakAnalysis peaks = null;
             PostRenderReport report = new(environment.Listener);
             AudioWriter writer = null;
             try {
-                peaks.CheckSource(target, true);
                 if (output != null) {
                     BitDepth bits = ExportFormat.Codec == Codec.PCM_Float ? BitDepth.Float32 :
                         RenderingSettings.Force24Bit ? BitDepth.Int24 : BitDepth.Int16;
@@ -118,13 +117,13 @@ public class Program : ICavernizeApp {
 
                 // One block per WAV write also flushes an update-aligned tail.
                 int cacheSize = environment.Listener.UpdateRate * RenderTarget.OutputChannels;
-                RenderStats stats = ChannelRender.Run(environment.Listener, target, writer, RenderTarget, peaks, RenderingSettings,
-                    Quality, RenderingSettings.SpeakerVirtualizer, cacheSize, Progress,
-                    (error, frame) => Console.Error.WriteLine($"Render error at frame {frame}: {error.Message}"));
+                RenderStats stats = ChannelRender.Run(environment, target, target, writer, RenderTarget, RenderingSettings,
+                    Quality, Verification, RenderingSettings.SpeakerVirtualizer, cacheSize, Progress,
+                    (error, frame) => Console.Error.WriteLine($"Render error at frame {frame}: {error.Message}"), out peaks);
                 writer = null; // ChannelRender completed and closed the writer.
-                peaks.CheckSource(target, true);
                 report.Generate(stats, peaks);
             } catch {
+                peaks ??= ChannelRender.CreateAnalysis(environment, target, target, RenderTarget, Verification);
                 peaks.Flag(PcmPeakIssue.Interrupted);
                 report.GenerateInterrupted(peaks);
                 if (target.AtmosSourcePath != null) {

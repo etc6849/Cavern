@@ -123,13 +123,12 @@ partial class MainWindow {
         CavernizeTrack renderedTrack = external.GetRenderedTrack(target);
         string source = target.AtmosSourcePath;
         bool exportAnalysis = source != null;
-        PcmSamplePeakAnalysis peaks = ChannelRender.CreateAnalysis(environment, target, renderedTrack, renderTargetRef, verify);
+        PcmSamplePeakAnalysis peaks = null;
         try {
-            peaks.CheckSource(renderedTrack, ReferenceEquals(target, renderedTrack));
-            RenderStats stats = WriteRender(target, writer, renderTargetRef, peaks);
-            peaks.CheckSource(renderedTrack, ReferenceEquals(target, renderedTrack));
+            RenderStats stats = WriteRender(target, renderedTrack, writer, renderTargetRef, verify, out peaks);
             report.Generate(stats, peaks);
         } catch {
+            peaks ??= ChannelRender.CreateAnalysis(environment, target, renderedTrack, renderTargetRef, verify);
             peaks.Flag(PcmPeakIssue.Interrupted);
             report.GenerateInterrupted(peaks);
             if (exportAnalysis) {

@@ -91,15 +91,16 @@ partial class MainWindow {
         }
     }
 
-    RenderStats WriteRender(CavernizeTrack target, AudioWriter writer, RenderTarget renderTarget, PcmSamplePeakAnalysis peaks) {
+    RenderStats WriteRender(CavernizeTrack target, CavernizeTrack renderedTrack, AudioWriter writer, RenderTarget renderTarget,
+        bool verify, out PcmSamplePeakAnalysis peaks) {
         Listener listener = environment.Listener;
         Progressor progressor = new(target.Length, listener, taskEngine);
         var (grade, speakerVirtualizer) = Dispatcher.Invoke(() => (grading.IsChecked, RenderingSettings.SpeakerVirtualizer));
-        return ChannelRender.Run(listener, target, writer, renderTarget, peaks, RenderingSettings, grade, speakerVirtualizer,
+        return ChannelRender.Run(environment, target, renderedTrack, writer, renderTarget, RenderingSettings, grade, verify, speakerVirtualizer,
             blockSize, progressor.Update, (error, frame) => ThreadPool.QueueUserWorkItem(_ => {
                 TimeSpan time = TimeSpan.FromSeconds(frame / (double)listener.SampleRate);
                 Dispatcher.Invoke(() => Error(string.Format(language["RenEr"], time, error.Message)));
-            }));
+            }), out peaks);
     }
 
     /// <summary>
