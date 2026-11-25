@@ -32,6 +32,15 @@ public class RenderReportStringsHU : RenderReportStrings {
         Set("PcmUnv", "Megfigyelt csúcsok — a forrás teljessége nem igazolt");
         Set("PcmFrames", "megfigyelt / várt PCM-mintakeret");
         Set("PcmAll", "Legnagyobb mintacsúcs");
+        Set("PcmOverallRms", "Teljes műsor RMS-szintje");
+        Set("PcmWindow", "Az aktivitást {0} ms-os RMS-ablakok alapján, időtartammal súlyozva mérjük.");
+        Set("PcmSpeaker", "Csatorna");
+        Set("PcmPeakColumn", "Csúcs");
+        Set("PcmRmsColumn", "Teljes műsor RMS");
+        Set("PcmActive", "Aktív >{0} dBFS");
+        Set("PcmVerification", "A csúcsok ellenőrzése");
+        Set("PcmMatched", "Egyezik");
+        Set("PcmMismatch", "Nem egyezik");
         Set("PcmNA", "Nem érhető el");
         Set("PcmMissingBlock", "Egy vagy több várt PCM-mintakeret hiányzik vagy érvénytelen.");
         Set("PcmInvalidBuffer", "Egy blokk mérete vagy a mérési hívások száma eltért a várttól.");

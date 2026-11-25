@@ -67,10 +67,14 @@ public class PcmSamplePeak_Tests {
             Assert.AreEqual(grading, oldText.Contains("Peak audio frame level", StringComparison.Ordinal));
             StringAssert.Contains(report.Report, "Overall sample peak: +1.94 dBFS");
             StringAssert.Contains(report.Report, "Overall sample peak: -6.02 dBFS");
-            StringAssert.Contains(report.Report, "2. LFE: 0.00 dBFS");
-            StringAssert.Contains(report.Report, "3. Top side left: -6.02 dBFS");
-            StringAssert.Contains(report.Report, "4. LFE: −∞ dBFS");
-            StringAssert.Contains(report.Report, "6. Front left: +0.000001 dBFS");
+            Assert.IsTrue(report.Report.Split('\n').Any(row => row.StartsWith("2. LFE ") &&
+                row.Split('|')[1].Trim() == "0.00 dBFS"));
+            Assert.IsTrue(report.Report.Split('\n').Any(row => row.StartsWith("3. Top side left ") &&
+                row.Split('|')[1].Trim() == "-6.02 dBFS"));
+            Assert.IsTrue(report.Report.Split('\n').Any(row => row.StartsWith("4. LFE ") &&
+                row.Split('|')[1].Trim() == "−∞ dBFS"));
+            Assert.IsTrue(report.Report.Split('\n').Any(row => row.StartsWith("6. Front left ") &&
+                row.Split('|')[1].Trim() == "+0.000001 dBFS"));
             StringAssert.Contains(report.Report, "source coverage unverified (1 / 1 PCM frames observed / expected)");
         } finally {
             Listener.ReplaceChannels(original);

@@ -144,6 +144,10 @@ public sealed class PostRenderReport(Listener listener) {
         AppendPeakSection(builder, peaks, peaks.PreLimiter, language["PcmPre"]);
         builder.AppendLine();
         AppendPeakSection(builder, peaks, peaks.Processed, language["PcmOut"]);
+        if (peaks.Diagnostics != null) {
+            builder.AppendLine().Append(language["PcmVerification"]).Append(valueIs)
+                .AppendLine(language[peaks.Diagnostics.Matches(peaks) ? "PcmMatched" : "PcmMismatch"]);
+        }
     }
 
     static void AppendPeakSection(StringBuilder builder, PcmSamplePeakAnalysis analysis,
@@ -173,24 +177,47 @@ public sealed class PostRenderReport(Listener listener) {
             overall = Math.Max(overall, value);
         }
         builder.Append(language["PcmAll"]).Append(valueIs).AppendLine(FormatPeak(overall));
+        builder.Append(language["PcmOverallRms"]).Append(valueIs).AppendLine(FormatDbfs(accumulator.OverallLevel().RmsDbfs));
+        builder.AppendFormat(language["PcmWindow"], PcmSamplePeakAccumulator.ActivityWindowMs).AppendLine();
+
+        string[] speakers = analysis.Labels.Select((speaker, slot) => $"{slot + 1}. {speaker}").ToArray();
+        string speakerHeading = language["PcmSpeaker"];
+        int speakerWidth = Math.Max(speakerHeading.Length, speakers.Max(speaker => speaker.Length));
+        string peakHeading = language["PcmPeakColumn"], rmsHeading = language["PcmRmsColumn"];
+        string active60 = string.Format(language["PcmActive"], PcmSamplePeakAccumulator.ActivityThreshold60),
+            active40 = string.Format(language["PcmActive"], PcmSamplePeakAccumulator.ActivityThreshold40);
+        int peakWidth = Math.Max(peakHeading.Length, 17), rmsWidth = Math.Max(rmsHeading.Length, 17);
+        int activeWidth = Math.Max(Math.Max(active60.Length, active40.Length), 15);
+
+        void Row(string speaker, string peak, string rms, string above60, string above40) =>
+            builder.Append(speaker.PadRight(speakerWidth)).Append(" | ")
+                .Append(peak.PadLeft(peakWidth)).Append(" | ").Append(rms.PadLeft(rmsWidth)).Append(" | ")
+                .Append(above60.PadLeft(activeWidth)).Append(" | ").Append(above40.PadLeft(activeWidth)).AppendLine();
+
+        Row(speakerHeading, peakHeading, rmsHeading, active60, active40);
         for (int slot = 0; slot < values.Length; slot++) {
-            builder.Append("  ").Append(slot + 1).Append(". ").Append(analysis.Labels[slot])
-                .Append(valueIs).AppendLine(FormatPeak(values[slot]));
+            PcmSignalLevel level = accumulator.ChannelLevel(slot);
+            Row(speakers[slot], FormatPeak(values[slot]), FormatDbfs(level.RmsDbfs),
+                FormatActivity(level.Active60), FormatActivity(level.Active40));
         }
     }
 
+    static string FormatActivity(double? value) => value.HasValue ? value.Value.ToString("0.#########") + "%" :
+        RenderReportStrings.Active["PcmNA"];
+
     static readonly PcmPeakIssue[] peakIssues = Enum.GetValues<PcmPeakIssue>();
 
-    static string FormatPeak(float value) {
-        if (value < 0) {
+    static string FormatPeak(float value) => FormatDbfs(value < 0 ? null : 20 * Math.Log10(value));
+
+    static string FormatDbfs(double? value) {
+        if (value is not double db) {
             return RenderReportStrings.Active["PcmNA"];
         }
-        if (value == 0) {
+        if (double.IsNegativeInfinity(db)) {
             return "−∞ dBFS";
         }
-        double db = 20 * Math.Log10(value);
         // Keep the sign of even the smallest float overs above unity.
-        string format = value != 1 && Math.Abs(db) < .005 ? "+0.000000;-0.000000" : "+0.00;-0.00;0.00";
+        string format = db != 0 && Math.Abs(db) < .005 ? "+0.000000;-0.000000" : "+0.00;-0.00;0.00";
         return db.ToString(format) + " dBFS";
     }
 

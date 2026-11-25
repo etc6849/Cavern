@@ -50,8 +50,8 @@ internal sealed class PcmSamplePeakAnalysis {
         Channel[] layout = Listener.Channels;
         slots = new OutputSlot[layout.Length];
         Labels = new string[layout.Length];
-        PreLimiter = new PcmSamplePeakAccumulator(layout.Length);
-        Processed = new PcmSamplePeakAccumulator(layout.Length);
+        PreLimiter = new PcmSamplePeakAccumulator(layout.Length, sampleRate);
+        Processed = new PcmSamplePeakAccumulator(layout.Length, sampleRate);
         for (int i = 0; i < layout.Length; i++) {
             slots[i] = new OutputSlot(layout[i]);
             Labels[i] = GetLabel(layout[i], target);

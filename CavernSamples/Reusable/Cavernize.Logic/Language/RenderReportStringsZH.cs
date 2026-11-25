@@ -32,6 +32,15 @@ public class RenderReportStringsZH : RenderReportStrings {
         Set("PcmUnv", "已测峰值 — 源数据覆盖范围未验证");
         Set("PcmFrames", "实测 / 预期 PCM 帧数");
         Set("PcmAll", "总样本峰值");
+        Set("PcmOverallRms", "整段节目总体 RMS");
+        Set("PcmWindow", "活动比例使用 {0} 毫秒 RMS 窗口并按时长加权。");
+        Set("PcmSpeaker", "扬声器");
+        Set("PcmPeakColumn", "峰值");
+        Set("PcmRmsColumn", "整段节目 RMS");
+        Set("PcmActive", "活动 >{0} dBFS");
+        Set("PcmVerification", "峰值验证");
+        Set("PcmMatched", "匹配");
+        Set("PcmMismatch", "不匹配");
         Set("PcmNA", "不可用");
         Set("PcmMissingBlock", "一个或多个预期的 PCM 帧缺失或无效。");
         Set("PcmInvalidBuffer", "渲染块大小或测量点调用次数异常。");

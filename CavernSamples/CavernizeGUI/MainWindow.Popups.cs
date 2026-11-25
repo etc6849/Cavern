@@ -151,12 +151,13 @@ public partial class MainWindow {
             Owner = this,
             Title = language["PReRe"],
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Width = Math.Min(640, SystemParameters.WorkArea.Width),
+            Width = Math.Min(900, SystemParameters.WorkArea.Width),
             Height = Math.Min(680, SystemParameters.WorkArea.Height),
             Content = new TextBox {
                 Text = report.Report,
                 IsReadOnly = true,
-                TextWrapping = TextWrapping.Wrap,
+                FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Padding = new Thickness(12)
             }

@@ -61,6 +61,28 @@ public class PcmPeakExport_Tests {
             Assert.AreEqual(1.93820026, double.Parse(channel[Col("pre_dbfs")], CultureInfo.InvariantCulture), 1e-8);
             Assert.AreEqual("-Infinity", table[1][Col("pre_dbfs")]);
             Assert.AreEqual("5", table[^2][Col("pre_slot")]);
+            Assert.AreEqual("1.25", channel[Col("pre_rms_linear")]);
+            Assert.AreEqual((double).9f, double.Parse(channel[Col("post_rms_linear")], CultureInfo.InvariantCulture), 1e-12);
+            Assert.AreEqual("100", channel[Col("pre_active_gt_minus40_percent")]);
+            Assert.AreEqual("0", table[1][Col("pre_active_gt_minus60_percent")]);
+            Assert.AreEqual("-Infinity", table[1][Col("pre_rms_dbfs")]);
+            Assert.AreEqual("100", channel[Col("activity_window_ms")]);
+            Assert.AreEqual("-60", channel[Col("activity_threshold_60_dbfs")]);
+            Assert.AreEqual("-40", channel[Col("activity_threshold_40_dbfs")]);
+            Assert.AreEqual(1.25 / Math.Sqrt(channels.Length),
+                double.Parse(table[^2][Col("pre_rms_linear")], CultureInfo.InvariantCulture), 1e-12);
+            Assert.AreEqual("", table[^2][Col("pre_active_gt_minus60_percent")]);
+            PostRenderReport report = new(listener);
+            report.Generate(new Cavern.Utilities.RenderStats(listener), analysis);
+            string[][] display = report.Report.Split('\n').Where(row => row.StartsWith("5. "))
+                .Select(row => row.Split('|')).ToArray();
+            Assert.AreEqual(2, display.Length);
+            Assert.AreEqual(double.Parse(channel[Col("pre_rms_dbfs")], CultureInfo.InvariantCulture).ToString("+0.00"),
+                display[0][2].Trim().Split(' ')[0]);
+            Assert.AreEqual(double.Parse(channel[Col("post_rms_dbfs")], CultureInfo.InvariantCulture).ToString("0.00"),
+                display[1][2].Trim().Split(' ')[0]);
+            Assert.AreEqual(channel[Col("pre_active_gt_minus40_percent")] + "%", display[0][4].Trim());
+            Assert.AreEqual(channel[Col("post_active_gt_minus60_percent")] + "%", display[1][3].Trim());
             Assert.AreEqual(quality.Name, table[^1][Col("quality_metric")]);
             Assert.AreEqual("-6.25", table[^1][Col("quality_db")]);
             Assert.AreEqual(csv, PcmPeakExport.SaveCsv(filename, analysis, []));
@@ -107,7 +129,9 @@ public class PcmPeakExport_Tests {
             RenderTarget target = new("Test", ChannelPrototype.ref516);
             target.Apply(false);
             int slot = lfe ? 3 : 4;
-            foreach (bool trace in new[] { false, true }) {
+            int[] baseline = null;
+            foreach (string mode in new[] { "baseline", "metrics", "verification" }) {
+                bool trace = mode == "verification";
                 Listener listener = new(false) { SampleRate = 48000, UpdateRate = 64,
                     LFESeparation = true, AudioQuality = QualityModes.Perfect };
                 ReferenceChannel first = lfe ? ReferenceChannel.ScreenLFE : ReferenceChannel.SideLeft;
@@ -116,25 +140,29 @@ public class PcmPeakExport_Tests {
                 PcmPeakDiagnostics diagnostics = trace ? new(12, sources, [first], [14, 15]) : null;
                 PcmSamplePeakAnalysis analysis = new(listener, 128, target, diagnostics);
                 listener.TracePcmSources = trace;
-                listener.ObservePreLimiterPcm = analysis.ObservePreLimiter;
-                if (trace) {
+                if (mode != "baseline") {
+                    listener.ObservePreLimiterPcm = analysis.ObservePreLimiter;
                     listener.ObservePostLimiterPcm = analysis.ObservePostLimiter;
                 }
                 List<int> bits = new();
                 for (int frame = 0; frame < 128; frame += 64) {
-                    analysis.BeginBlock(frame);
+                    if (mode != "baseline") {
+                        analysis.BeginBlock(frame);
+                    }
                     float[] pcm = listener.Render();
-                    analysis.AcceptRenderedBlock(pcm);
+                    if (mode != "baseline") {
+                        analysis.AcceptRenderedBlock(pcm);
+                    }
                     bits.AddRange(pcm.Select(BitConverter.SingleToInt32Bits));
                 }
-                string pcmFile = Path.Combine(dir, "Baseline.txt");
-                if (!trace) {
-                    File.WriteAllLines(pcmFile, bits.Select(bit => bit.ToString(CultureInfo.InvariantCulture)));
+                if (mode == "baseline") {
+                    baseline = bits.ToArray();
                     continue;
                 }
-
-                CollectionAssert.AreEqual(File.ReadAllLines(pcmFile), bits.Select(bit =>
-                    bit.ToString(CultureInfo.InvariantCulture)).ToArray());
+                CollectionAssert.AreEqual(baseline, bits.ToArray());
+                if (!trace) {
+                    continue;
+                }
                 PcmPeakEvent peak = analysis.PreLimiter.GetEvent(slot).Value;
                 if (!lfe) {
                     Assert.AreEqual(71L, peak.Frame);

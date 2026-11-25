@@ -19,8 +19,14 @@ internal static class PcmPeakExport {
         "pre_same_sample_after_limiter", "pre_block_gain", "pre_block_maximum", "pre_block_attack",
         "post_slot", "post_abs_linear", "post_dbfs", "post_frame", "post_seconds", "post_signed_sample", "post_float_bits",
         "post_block_gain", "post_block_maximum", "post_block_attack",
-        "quality_metric", "quality_db", "quality_grade"
+        "quality_metric", "quality_db", "quality_grade",
+        "pre_rms_linear", "pre_rms_dbfs", "post_rms_linear", "post_rms_dbfs",
+        "pre_active_gt_minus60_percent", "pre_active_gt_minus40_percent",
+        "post_active_gt_minus60_percent", "post_active_gt_minus40_percent",
+        "activity_window_ms", "activity_threshold_60_dbfs", "activity_threshold_40_dbfs"
     ];
+
+    static readonly int qualityColumn = Array.IndexOf(columns, "quality_metric");
 
     internal static string SafeComponent(string text) {
         StringBuilder name = new();
@@ -68,12 +74,20 @@ internal static class PcmPeakExport {
                 rate > 0 ? Math.Min(analysis.PreLimiter.ObservedFrames, analysis.Processed.ObservedFrames) / (double)rate : null,
                 Status(analysis), analysis.Diagnostics == null ? "disabled" : analysis.Diagnostics.Matches(analysis) ? "matched" : "mismatch",
                 analysis.PreLimiter.Issues, analysis.Processed.Issues];
-            void PeakRow(string kind, int? slot, string label, int preSlot, int postSlot) => WriteRow(writer, [
-                kind, .. metadata, slot, label,
-                .. EventFields(analysis.PreLimiter, preSlot, rate, true),
-                .. EventFields(analysis.Processed, postSlot, rate, false),
-                null, null, null
-            ]);
+            void PeakRow(string kind, int? slot, string label, int preSlot, int postSlot) {
+                PcmSignalLevel pre = slot.HasValue ? analysis.PreLimiter.ChannelLevel(slot.Value - 1) : analysis.PreLimiter.OverallLevel();
+                PcmSignalLevel post = slot.HasValue ? analysis.Processed.ChannelLevel(slot.Value - 1) : analysis.Processed.OverallLevel();
+                WriteRow(writer, [
+                    kind, .. metadata, slot, label,
+                    .. EventFields(analysis.PreLimiter, preSlot, rate, true),
+                    .. EventFields(analysis.Processed, postSlot, rate, false),
+                    null, null, null,
+                    pre.Rms, pre.RmsDbfs, post.Rms, post.RmsDbfs,
+                    pre.Active60, pre.Active40, post.Active60, post.Active40,
+                    PcmSamplePeakAccumulator.ActivityWindowMs, PcmSamplePeakAccumulator.ActivityThreshold60,
+                    PcmSamplePeakAccumulator.ActivityThreshold40
+                ]);
+            }
             for (int slot = 0; slot < analysis.Labels.Length; slot++) {
                 PeakRow("channel", slot + 1, analysis.Labels[slot], slot, slot);
             }
@@ -82,9 +96,9 @@ internal static class PcmPeakExport {
                 object[] row = new object[columns.Length];
                 row[0] = "quality";
                 metadata.CopyTo(row, 1);
-                row[^3] = metric.Name;
-                row[^2] = metric.Db;
-                row[^1] = metric.Grade;
+                row[qualityColumn] = metric.Name;
+                row[qualityColumn + 1] = metric.Db;
+                row[qualityColumn + 2] = metric.Grade;
                 WriteRow(writer, row);
             }
         });
