@@ -71,9 +71,9 @@ public class CavernizeCli_Tests {
                 }
             }
 
-            await Invoke(0, ["-i", input, "--render-gain", "-3", "-t", Side, .. AnalysisOptions]);
+            await Invoke(0, ["-i", input, "--render-gain", "-3,5", "-t", Side, .. AnalysisOptions]);
             var legacy = ReadReport(dir, SideId);
-            Validate(legacy, dir, SideId, 8, .707, .707 * Math.Pow(10, -3d / 20), null);
+            Validate(legacy, dir, SideId, 8, .707, .707 * Math.Pow(10, -3.5 / 20), null);
             Assert.IsFalse(Directory.EnumerateFiles(dir, "*.wav").Any());
             Assert.IsFalse(Directory.EnumerateFiles(dir, "*.mka").Any());
 

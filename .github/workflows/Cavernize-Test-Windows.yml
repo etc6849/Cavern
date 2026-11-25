@@ -41,17 +41,30 @@ jobs:
       - name: Execute the published Windows CLI
         shell: pwsh
         run: |
-          .\Tests\Integration\Test-CavernizeCli.ps1 `
-            -Executable (Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe') `
-            -FixtureDirectory '.\Tests\Fixtures\Cavernize' `
-            -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-cli-smoke')
+          try {
+            .\Tests\Integration\Test-CavernizeCli.ps1 `
+              -Executable (Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe') `
+              -FixtureDirectory '.\Tests\Fixtures\Cavernize' `
+              -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-cli-smoke')
+          } catch {
+            $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Windows CLI integration::$detail"
+            throw
+          }
 
       - name: Run Windows GUI regression and analysis parity tests
         shell: pwsh
         run: |
           $env:CAVERNIZE_PUBLISHED_CLI = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe'
-          dotnet test .\Tests\Test.CavernizeGUI\Test.CavernizeGUI.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { throw "GUI regression tests failed with exit code $LASTEXITCODE" }
+          $log = dotnet test .\Tests\Test.CavernizeGUI\Test.CavernizeGUI.csproj -c Release 2>&1
+          $exitCode = $LASTEXITCODE
+          $log | Write-Host
+          if ($exitCode -ne 0) {
+            $detail = ($log | Select-String 'Failed |Error Message:|Exception|error ' -Context 0,2 | Out-String).Trim()
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Windows GUI regression::$detail"
+            throw "GUI regression tests failed with exit code $exitCode"
+          }
 
       - name: Package and verify the Windows ZIP
         shell: pwsh
@@ -91,3 +104,21 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+
+      - name: Download the uploaded artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Cavernize-Test-win-x64-Release
+          path: ${{ runner.temp }}/Cavernize-artifact-check
+
+      - name: Verify the downloaded Release ZIP checksum
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $fileName = 'Cavernize-Test-win-x64-Release.zip'
+          $original = Join-Path $env:RUNNER_TEMP $fileName
+          $downloaded = Join-Path $env:RUNNER_TEMP "Cavernize-artifact-check/$fileName"
+          $expected = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
+          $actual = (Get-FileHash -LiteralPath $downloaded -Algorithm SHA256).Hash
+          $sidecar = (Get-Content -LiteralPath "$downloaded.sha256").Split(' ')[0]
+          if ($actual -ne $expected -or $actual -ne $sidecar) { throw 'Downloaded artifact checksum mismatch' }

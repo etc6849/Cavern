@@ -67,7 +67,7 @@ $null = Invoke-Cli 0 (@('--input', $source, '--layout', '5.1.6 with top sides') 
 $null = Assert-Report '5.1.6-with-top-sides' 1 1 12 'Automatic'
 $null = Invoke-Cli 0 (@('--input', $source, '--layout', '5.1.2 side') + $common)
 $null = Assert-Report '5.1.2-side' .707 .707 8 'Automatic'
-$null = Invoke-Cli 0 (@('--listener-gain-db', '0', '-t', '5.1.2 side') + $common + @('-i', $source))
+$null = Invoke-Cli 0 (@('--input', $source, '--layout', '5.1.2 side') + $common + @('--listener-gain-db', '0'))
 $null = Assert-Report '5.1.2-side-ListenerGain-0dB' .707 1 8 'Explicit override'
 $null = Invoke-Cli 0 (@('--listener-gain-db', '-3', '--input', $source, '--layout', '5.1.2 side') + $common)
 $null = Assert-Report '5.1.2-side-ListenerGain-m3dB' .707 ([Math]::Pow(10, -3.0 / 20)) 8 'Explicit override'
@@ -82,3 +82,4 @@ $null = Invoke-Cli 2 @('--input', $source, '--listener-gain-db', '0', '--render-
 $null = Invoke-Cli 1 @('--input', (Join-Path $WorkDirectory 'missing.atmos'), '--report-only')
 
 Write-Host 'Published CLI passed Atmos analysis, JSON verification, both layouts, absolute gain, and failure cases.'
+exit 0

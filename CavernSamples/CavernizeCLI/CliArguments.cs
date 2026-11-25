@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
+using Cavern.Utilities;
+
 using Cavernize.Logic.CommandLine;
 using Cavernize.Logic.CommandLine.BaseClasses;
 using Cavernize.Logic.Models.RenderTargets;
@@ -86,8 +88,8 @@ sealed class CliArguments {
                         ReadValue();
                     }
                     if (argument == "--render-gain") {
-                        if (!float.TryParse(args[offset], NumberStyles.Float, CultureInfo.InvariantCulture, out float extra) ||
-                            !float.IsFinite(extra) || !float.IsFinite(MathF.Pow(10, extra / 20))) {
+                        if (!QMath.TryParseFloat(args[offset], out float extra) || !float.IsFinite(extra) ||
+                            !float.IsFinite(QMath.DbToGain(extra))) {
                             throw new CommandException("Additional render gain must be finite.");
                         }
                         result.legacyGain = true;
