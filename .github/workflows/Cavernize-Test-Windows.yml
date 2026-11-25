@@ -1,0 +1,62 @@
+name: Cavernize Windows test build
+
+on:
+  push:
+    branches:
+      - feature/cavernize-pcm-sample-peaks
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    if: github.ref == 'refs/heads/feature/cavernize-pcm-sample-peaks'
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish Cavernize GUI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
+          dotnet publish .\CavernSamples\CavernizeGUI\CavernizeGUI.csproj -c Release -r win-x64 --self-contained true -o $publish
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
+          Copy-Item -LiteralPath 'LICENSE.md', 'docs/Cavernize PCM sample peaks.md' -Destination $publish
+
+      - name: Package and verify the Windows ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
+          $zip = Join-Path $env:RUNNER_TEMP 'Cavernize-Test-win-x64-Release.zip'
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($publish, $zip)
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            foreach ($required in @(
+              'CavernizeGUI.exe', 'CavernizeGUI.dll', 'CavernizeGUI.deps.json',
+              'CavernizeGUI.runtimeconfig.json', 'Cavernize.Logic.dll', 'Cavern.Format.dll',
+              'Cavern.dll', 'coreclr.dll', 'PresentationFramework.dll',
+              'Microsoft.Web.WebView2.Wpf.dll', 'WebView2Loader.dll'
+            )) {
+              if (-not $archive.GetEntry($required)) { throw "Missing published file: $required" }
+            }
+          } finally {
+            $archive.Dispose()
+          }
+          Get-FileHash -LiteralPath $zip -Algorithm SHA256
+
+      - name: Upload Cavernize Windows test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cavernize-Test-win-x64-Release
+          path: ${{ runner.temp }}/Cavernize-Test-win-x64-Release.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
