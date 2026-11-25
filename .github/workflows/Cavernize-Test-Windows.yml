@@ -46,6 +46,12 @@ jobs:
           if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue) -or !(Get-Command ffprobe -ErrorAction SilentlyContinue)) {
             choco install ffmpeg -y --no-progress
             if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+            $ffmpeg = Get-ChildItem (Join-Path $env:ChocolateyInstall 'lib') -Directory -Filter 'ffmpeg*' |
+              Get-ChildItem -Recurse -Filter 'ffmpeg.exe' -File |
+              Where-Object { Test-Path -LiteralPath (Join-Path $_.DirectoryName 'ffprobe.exe') } |
+              Select-Object -First 1
+            if (!$ffmpeg) { throw 'FFmpeg and FFprobe were not found in the installed Chocolatey package.' }
+            $ffmpeg.DirectoryName | Add-Content -LiteralPath $env:GITHUB_PATH
           }
           if (!(Get-Command mkvmerge -ErrorAction SilentlyContinue)) {
             choco install mkvtoolnix -y --no-progress
