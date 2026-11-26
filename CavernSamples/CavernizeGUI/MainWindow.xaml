@@ -6,7 +6,7 @@
         xmlns:cav="clr-namespace:Cavern.WPF.Controls;assembly=Cavern.WPF"
         xmlns:uc="clr-namespace:CavernizeGUI.UserControls"
         mc:Ignorable="d"
-        Title="Cavernize V5 Beta" Height="460" Width="1200" Background="#696969">
+        Title="Cavernize V6 Beta 1" Height="460" Width="1200" Background="#696969">
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

@@ -6,6 +6,7 @@ on:
       - feature/cavernize-pcm-sample-peaks
       - feature/cavernize-v4-integrated-analysis
       - feature/cavernize-v4-truehd-fix
+      - feature/cavernize-v6-bed-reporting
   workflow_dispatch:
 
 env:

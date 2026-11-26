@@ -10,8 +10,8 @@
 		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
 		<DebugType>full</DebugType>
 		<Authors>VoidX</Authors>
-		<Product>Cavernize V5 Beta</Product>
-		<Version>5.0.0-beta.1</Version>
+		<Product>Cavernize V6 Beta 1</Product>
+		<Version>6.0.0-beta.1</Version>
 		<PackageProjectUrl>https://cavern.sbence.hu/</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/VoidXH/Cavern/</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>

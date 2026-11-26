@@ -1,0 +1,289 @@
+name: Cavernize V6 Beta 1 Windows release
+
+on:
+  push:
+    branches:
+      - feature/cavernize-v6-bed-reporting
+    tags:
+      - cavernize-v6.0.0-beta.1
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the verified V6 Beta 1 ZIP as a public GitHub pre-release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  V6_SOURCE_BRANCH: feature/cavernize-v6-bed-reporting
+  V6_TAG: cavernize-v6.0.0-beta.1
+  V6_ZIP: Cavernize-V6-Beta-win-x64.zip
+
+jobs:
+  package:
+    if: >-
+      github.repository == 'etc6849/Cavern' &&
+      (github.ref == 'refs/heads/feature/cavernize-v6-bed-reporting' || github.ref == 'refs/tags/cavernize-v6.0.0-beta.1')
+    runs-on: windows-2022
+    timeout-minutes: 25
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the source and release ref
+        shell: pwsh
+        env:
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $sha = git rev-parse HEAD
+          if ($sha -ne $env:GITHUB_SHA) { throw 'The checkout does not match the workflow SHA.' }
+          git merge-base --is-ancestor 74e82fd2476e23245eb3900dd64c045c4f5bb5f0 HEAD
+          git merge-base --is-ancestor HEAD "refs/remotes/origin/$env:V6_SOURCE_BRANCH"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -or $env:PUBLISH_RELEASE -eq 'true') {
+            $tagSha = git rev-parse "refs/tags/$env:V6_TAG^{commit}"
+            if ($tagSha -ne $sha) { throw 'The V6 Beta 1 tag does not identify this build.' }
+          }
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Select the .NET 8 SDK
+        shell: pwsh
+        run: |
+          Set-Content -LiteralPath global.json -Value '{"sdk":{"version":"8.0.100","rollForward":"latestFeature"}}'
+          $sdk = dotnet --version
+          if ($LASTEXITCODE -ne 0 -or $sdk -notlike '8.0.*') { throw "Cannot select the .NET 8 SDK." }
+          Write-Host "Using .NET SDK $sdk"
+
+      - name: Publish Cavernize GUI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
+          dotnet publish .\CavernSamples\CavernizeGUI\CavernizeGUI.csproj -c Release -r win-x64 --self-contained true -o $publish
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
+
+      - name: Publish Cavernize CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI'
+          dotnet publish .\CavernSamples\CavernizeCLI\CavernizeCLI.csproj -c Release -r win-x64 --self-contained true -o $cli
+          if ($LASTEXITCODE -ne 0) { throw "CLI publish failed with exit code $LASTEXITCODE" }
+
+      - name: Install verification tools and bundle TrueHDD
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue) -or !(Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+            $ffmpegArchive = Join-Path $env:RUNNER_TEMP 'ffmpeg-8.0.1.zip'
+            $ffmpegRoot = Join-Path $env:RUNNER_TEMP 'ffmpeg-tools'
+            Invoke-WebRequest 'https://github.com/GyanD/codexffmpeg/releases/download/8.0.1/ffmpeg-8.0.1-essentials_build.zip' -OutFile $ffmpegArchive
+            if ((Get-FileHash -LiteralPath $ffmpegArchive).Hash -ne 'e2aaeaa0fdbc397d4794828086424d4aaa2102cef1fb6874f6ffd29c0b88b673') {
+              throw 'FFmpeg checksum mismatch'
+            }
+            Expand-Archive -LiteralPath $ffmpegArchive -DestinationPath $ffmpegRoot
+            $ffmpegBin = Join-Path $ffmpegRoot 'ffmpeg-8.0.1-essentials_build/bin'
+            $ffmpegBin | Add-Content -LiteralPath $env:GITHUB_PATH
+            $env:PATH = "$ffmpegBin;$env:PATH"
+          }
+          foreach ($tool in @('ffmpeg', 'ffprobe')) {
+            $command = Get-Command $tool -ErrorAction SilentlyContinue
+            if (!$command) {
+              Write-Host "::error title=Windows verification tool unavailable::$tool"
+              throw "The $tool command could not be located."
+            }
+            Write-Host "$tool found at $($command.Source)"
+          }
+          $decoderPackage = Join-Path $env:RUNNER_TEMP 'truehdd.zip'
+          $decoderFolder = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD'
+          Invoke-WebRequest 'https://github.com/truehdd/truehdd/releases/download/0.6.3/truehdd-0.6.3-x86_64-pc-windows-msvc.zip' -OutFile $decoderPackage
+          if ((Get-FileHash -LiteralPath $decoderPackage).Hash -ne '34657a2c7d97779badc123929ee9ad055ef09366857d67eb40289948fbd0d555') {
+            throw 'TrueHDD checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $decoderPackage -DestinationPath $decoderFolder
+          & (Join-Path $decoderFolder 'truehdd.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw 'TrueHDD could not start.' }
+
+      - name: Execute the published Windows CLI
+        shell: pwsh
+        run: |
+          try {
+            .\Tests\Integration\Test-CavernizeCli.ps1 `
+              -Executable (Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe') `
+              -FixtureDirectory '.\Tests\Fixtures\Cavernize' `
+              -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-cli-smoke')
+          } catch {
+            $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Windows CLI integration::$detail"
+            throw
+          }
+
+      - name: Exercise integrated Atmos analysis and validate both MKV export routes
+        shell: pwsh
+        run: |
+          try {
+            $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
+            .\Tests\Integration\Test-CavernizeV4.ps1 -Executable (Join-Path $publish 'CLI/CavernizeCLI.exe') -Decoder (Join-Path $publish 'Tools/TrueHDD/truehdd.exe') -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration')
+          } catch {
+            $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=V4 media integration::$detail"
+            throw
+          }
+
+      - name: Verify TrueHD extraction and decoding across lacing types
+        shell: pwsh
+        run: |
+          $env:CAVERN_LACE_FIXTURE = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/atmos.thd'
+          $mkvextract = Get-Command mkvextract -ErrorAction SilentlyContinue
+          if ($mkvextract) {
+            $env:CAVERN_TEST_MKVEXTRACT = $mkvextract.Source
+          } else {
+            Write-Host "::notice title=MKVToolNix cross-check::mkvextract unavailable on this runner. The test compares against the original elementary stream and decodes with TrueHDD."
+          }
+          $env:CAVERN_TEST_TRUEHDD = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD/truehdd.exe'
+          $log = dotnet test .\Tests\Test.Cavern.Format\Test.Cavern.Format.csproj -c Release 2>&1
+          $code = $LASTEXITCODE
+          $log | Write-Host
+          $log | Select-String '^Passed!' | ForEach-Object { $_.Line | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
+          if ($code -ne 0) {
+            $detail = ($log | Select-String 'Failed |Error Message:|Exception|error ' -Context 0,2 | Out-String).Trim()
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=TrueHD extraction regression::$detail"
+            throw "Format tests failed with exit code $code"
+          }
+
+      - name: Compare V5 Windows PCM and measurements with V6 and FFmpeg
+        shell: pwsh
+        run: |
+          try {
+            $archive = Join-Path $env:RUNNER_TEMP 'Cavernize-V5-Beta-win-x64.zip'
+            $baseline = Join-Path $env:RUNNER_TEMP 'Cavernize-V5-baseline'
+            Invoke-WebRequest 'https://github.com/etc6849/Cavern/releases/download/cavernize-v5.0.0-beta.1/Cavernize-V5-Beta-win-x64.zip' -OutFile $archive -TimeoutSec 120
+            if ((Get-FileHash -LiteralPath $archive).Hash -ne '4466db1caa547d259a8afcbcc8db66dbb90703ca89717b36c3198e56469c8705') {
+              throw 'The published V5 reference ZIP failed its SHA-256 check.'
+            }
+            [IO.Compression.ZipFile]::ExtractToDirectory($archive, $baseline)
+            $fixture = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/Movies (Fixture)/Movie (UHD) Ω.mkv'
+            $candidate = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe'
+            .\Tests\Integration\Test-CavernizeV6Pcm.ps1 -Baseline (Join-Path $baseline 'CLI/CavernizeCLI.exe') -Candidate $candidate -Fixture $fixture -WorkDirectory (Join-Path $env:RUNNER_TEMP 'Cavernize-v6-pcm-regression')
+          } catch {
+            $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=V5/V6 PCM and FFmpeg regression::$detail"
+            throw
+          }
+
+      - name: Check TrueHDD diagnostic summaries
+        shell: pwsh
+        run: |
+          $log = dotnet test .\Tests\Test.Cavernize.Logic\Test.Cavernize.Logic.csproj -c Release 2>&1
+          $code = $LASTEXITCODE
+          $log | Write-Host
+          if ($code -ne 0) { throw "Logic tests failed with exit code $code" }
+          $log | Select-String '^Passed!' | ForEach-Object { $_.Line | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
+
+      - name: Run Windows GUI regression and analysis parity tests
+        shell: pwsh
+        run: |
+          $env:CAVERNIZE_PUBLISHED_CLI = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/CLI/CavernizeCLI.exe'
+          $env:CAVERNIZE_V4_FIXTURES = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/Movies (Fixture)'
+          $env:CAVERNIZE_V4_DECODER = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64/Tools/TrueHDD/truehdd.exe'
+          $log = dotnet test .\Tests\Test.CavernizeGUI\Test.CavernizeGUI.csproj -c Release 2>&1
+          $exitCode = $LASTEXITCODE
+          $log | Write-Host
+          $log | Select-String '^Passed!' | ForEach-Object { $_.Line | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
+          if ($exitCode -ne 0) {
+            $detail = ($log | Select-String 'Failed |Error Message:|Exception|error ' -Context 0,2 | Out-String).Trim()
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Windows GUI regression::$detail"
+            throw "GUI regression tests failed with exit code $exitCode"
+          }
+
+      - name: Verify the contents and execute the unpacked Windows distribution
+        shell: pwsh
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP 'Cavernize-publish-win-x64'
+          $fixture = Join-Path $env:RUNNER_TEMP 'Cavernize-v4-integration/Movies (Fixture)/Movie (UHD) Ω.mkv'
+          try {
+            .\.github\scripts\Package-CavernizeV6.ps1 -PublishedDirectory $publish -PackageDirectory $env:RUNNER_TEMP -TestFixture $fixture -SourceCommit $env:GITHUB_SHA
+          } catch {
+            $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Windows ZIP verification::$detail"
+            throw
+          }
+
+      - name: Upload the verified Windows distribution
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cavernize-V6-Beta-win-x64
+          path: |
+            ${{ runner.temp }}/${{ env.V6_ZIP }}
+            ${{ runner.temp }}/${{ env.V6_ZIP }}.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  publish:
+    if: github.ref == 'refs/tags/cavernize-v6.0.0-beta.1' || inputs.publish_release == true
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: cavernize-v6-beta-release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ARTIFACT_ID: ${{ needs.package.outputs.artifact-id }}
+      RELEASE_NOTES: docs/Cavernize-V6/Release-Notes.md
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify artifact and publish the V6 Beta 1 pre-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          output=$(mktemp -d)
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" -o "$output/artifact.zip"
+          unzip -j "$output/artifact.zip" "$V6_ZIP" "$V6_ZIP.sha256" -d "$output"
+          (cd "$output" && sha256sum --check "$V6_ZIP.sha256")
+          unzip -p "$output/$V6_ZIP" BUILD-INFO.json | jq --exit-status \
+            --arg sha "$GITHUB_SHA" --arg tag "$V6_TAG" --arg branch "$V6_SOURCE_BRANCH" \
+            '.commit == $sha and .tag == $tag and .sourceBranch == $branch and .runtimeIdentifier == "win-x64"'
+          gh release create "$V6_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title 'Cavernize V6 Beta 1' --notes-file "$RELEASE_NOTES" \
+            --prerelease --latest=false "$output/$V6_ZIP" "$output/$V6_ZIP.sha256" "$RELEASE_NOTES"
+          gh release view "$V6_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets \
+            | jq --exit-status --arg tag "$V6_TAG" --arg zip "$V6_ZIP" \
+              --arg notes "$(basename "$RELEASE_NOTES")" \
+              '.tagName == $tag and (.isDraft | not) and .isPrerelease and
+               ([.assets[].name] | sort) == ([$zip, ($zip + ".sha256"), $notes] | sort)'
+
+      - name: Verify the public release downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          output=$(mktemp -d)
+          base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases"
+          for asset in "$V6_ZIP" "$V6_ZIP.sha256" "$(basename "$RELEASE_NOTES")"; do
+            curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+              "$base/download/$V6_TAG/$asset" -o "$output/$asset"
+          done
+          (cd "$output" && sha256sum --check "$V6_ZIP.sha256")
+          cmp "$RELEASE_NOTES" "$output/$(basename "$RELEASE_NOTES")"
+          echo "[Verified public Windows x64 download]($base/download/$V6_TAG/$V6_ZIP)" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Cavernize V6 Beta 1 pre-release]($base/tag/$V6_TAG)" >> "$GITHUB_STEP_SUMMARY"
