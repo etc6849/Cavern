@@ -47,6 +47,7 @@ internal static class ChannelRender {
 
             bool direct = !derived && ReferenceEquals(target, renderedTrack);
             peaks = CreateAnalysis(environment, target, renderedTrack, renderTarget, verify);
+            peaks.SourceInventory = AtmosSourceInventory.Create(renderedTrack.Renderer, !direct);
             peaks.CheckSource(renderedTrack, direct);
             listener.ObservePreLimiterPcm = peaks.ObservePreLimiter;
             listener.ObservePostLimiterPcm = peaks.ObservePostLimiter;
@@ -93,6 +94,7 @@ internal static class ChannelRender {
             }
             if (rendered) {
                 peaks.AcceptRenderedBlock(result);
+                peaks.SourceInventory?.Observe((int)Math.Min(listener.UpdateRate, target.Length - renderedFrames));
             } else {
                 peaks.RejectRenderedBlock();
             }

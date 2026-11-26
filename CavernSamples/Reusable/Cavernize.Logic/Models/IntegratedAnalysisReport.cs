@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.VisualBasic.FileIO;
 
 using Cavern;
@@ -17,9 +18,10 @@ internal sealed class IntegratedAnalysisReport {
         "analysis_schema", "original_source_path", "source_revision", "source_codec", "audio_track_index", "container_track_number",
         "track_language", "track_title", "decoder_version", "settings_id", "render_settings", "quality_metric_id",
         "bed_count", "dynamic_object_count", "unused_target_count", "bed_positions", "quality_note",
-        .. PcmPeakExport.Columns
+        .. PcmPeakExport.Columns, "source_inventory"
     ];
     const int pathColumn = 1, revisionColumn = 2, settingsColumn = 9, metricColumn = 11;
+    static readonly JsonSerializerOptions inventoryJson = new() { Converters = { new JsonStringEnumConverter() } };
 
     readonly string source, revision;
     readonly CavernizeTrack selected;
@@ -45,14 +47,16 @@ internal sealed class IntegratedAnalysisReport {
             MeridianLosslessPackingRenderer.ForcedPresentation, DecoderVersion = decoderVersion, ExportCodec = exportCodec
         });
         string key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{selected.Index}/{selected.Track?.ID}/{configuration}")));
-        string positions = JsonSerializer.Serialize(report.Beds.Select(bed => new {
-            Label = bed.Channel.ToString(), X = bed.Position.X, Y = bed.Position.Y, Z = bed.Position.Z
+        var sources = report.Sources;
+        string positions = sources.Beds == null ? null : JsonSerializer.Serialize(sources.Beds.Select(bed => new {
+            Label = bed.Channel.ToString(), bed.Position.X, bed.Position.Y, bed.Position.Z
         }));
+        string inventory = JsonSerializer.Serialize(sources, inventoryJson);
         object[] metadata = [schema, source, revision, selected.Codec, selected.Index, selected.Track?.ID, selected.Language,
-            selected.Track?.Name, decoderVersion, key, configuration, null, report.Beds.Count, report.DynamicObjects,
-            report.UnusedTargets, positions, report.NoLfe ? "NoLFE" : null];
+            selected.Track?.Name, decoderVersion, key, configuration, null, sources.Beds?.Count, sources.DynamicObjects,
+            sources.InactiveSources, positions, report.NoLfe ? "NoLFE" : null];
         PcmPeakExport.WriteRows(source, peaks, report.Quality, (row, metricId) => {
-            object[] result = [.. metadata, .. row];
+            object[] result = [.. metadata, .. row, (string)row[0] == "overall" ? inventory : null];
             result[metricColumn] = metricId;
             newRows.Add(result);
         });
@@ -92,18 +96,20 @@ internal sealed class IntegratedAnalysisReport {
                 if (File.Exists(path)) {
                     using TextFieldParser parser = new(path);
                     parser.SetDelimiters(",");
-                    if (!(parser.ReadFields() ?? []).SequenceEqual(columns)) {
+                    string[] header = parser.ReadFields() ?? [];
+                    bool legacy = header.SequenceEqual(columns.Take(columns.Length - 1));
+                    if (!legacy && !header.SequenceEqual(columns)) {
                         throw new IOException($"An existing CSV at {path} has an unrelated or different schema. Move it aside to publish this report.");
                     }
                     while (!parser.EndOfData) {
                         string[] row = parser.ReadFields();
-                        if (row.Length != columns.Length || row[0] != schema ||
+                        if (row.Length != header.Length || row[0] != schema ||
                             !string.Equals(row[pathColumn], source, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
                             row[revisionColumn] != revision) {
                             throw new IOException($"The existing CSV at {path} belongs to a different source or revision.");
                         }
                         if (!keys.Contains(row[settingsColumn])) {
-                            PcmPeakExport.WriteRow(writer, row);
+                            PcmPeakExport.WriteRow(writer, legacy ? row.Append("") : row);
                         }
                     }
                 }

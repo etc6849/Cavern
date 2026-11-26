@@ -30,6 +30,8 @@ namespace Cavern.Format.Renderers {
         readonly int[] movementFrames;
 
         internal IReadOnlyList<int> AtmosSourceIds { get; }
+        internal IReadOnlyList<int?> DeclaredObjectIds { get; }
+        internal IReadOnlyList<DolbyAtmosMasterMetadataFile.ObjectPositions> ExplicitPositions { get; }
 
         internal bool? HasCompletePcmPayload => stream is CoreAudioFormatDecoder caf ? (bool?)caf.HasCompletePcmPayload : null;
 
@@ -51,6 +53,7 @@ namespace Cavern.Format.Renderers {
             DolbyAtmosMasterFormatRootFile root = new DolbyAtmosMasterFormatRootFile(rootSource, Channels);
             channels = root.Channels;
             AtmosSourceIds = root.ObjectMapping;
+            DeclaredObjectIds = root.DeclaredObjectIds;
             Vector3[] positions = ChannelPrototype.ToAlternativePositions(channels);
             for (int i = 0; i < channels.Length; i++) {
                 objects[i].Position = positions[i] * Listener.EnvironmentSize;
@@ -59,6 +62,7 @@ namespace Cavern.Format.Renderers {
 
             DolbyAtmosMasterMetadataFile metadata = new DolbyAtmosMasterMetadataFile(metadataSource, root.ObjectMapping);
             movement = metadata.Movement;
+            ExplicitPositions = metadata.ExplicitPositions;
             movementFrames = new int[movement.Length];
         }
 

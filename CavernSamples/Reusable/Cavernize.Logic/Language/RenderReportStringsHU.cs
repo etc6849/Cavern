@@ -10,9 +10,8 @@ public class RenderReportStringsHU : RenderReportStrings {
     /// <inheritdoc/>
     protected override void ApplyTranslation() {
         Set("Defau", "Miután a renderelés befejeződött, itt további sávinformációt találsz, mint például a valódi objektumhasználati statisztika.");
-        Set("ABeds", "Valójában tartalmazott bed csatornák");
-        Set("AObjs", "Valójában tartalmazott dinamikus objektumok");
-        Set("FakeT", "Kihasználatlan (kamu) renderelési célok");
+        Set("ABeds", "Kódolt bed csatornák");
+        Set("FakeT", "Inaktív objektumforrások (néma dekódolt PCM)");
         Set("PeaGa", "Csúcs audio keret szint");
         Set("RMSGa", "Tartalom RMS szintje");
         Set("MacDy", "Makrodinamika");

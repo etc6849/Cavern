@@ -246,7 +246,7 @@ partial class MainWindow {
         } else {
             stats = WriteTranscode(target, writer);
         }
-        report.Generate(stats);
+        report.Generate(stats, null, AtmosSourceInventory.Create(external.GetRenderedTrack(target).Renderer, external.ExternalConverterNeeded));
         external.Dispose();
         FinishTask(target);
     }

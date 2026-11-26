@@ -10,10 +10,27 @@ namespace Cavern.Format.Renderers.CoreAudioFormat {
     /// Parses the .metadata file of a Dolby Atmos Master Format export to internal data representations.
     /// </summary>
     internal class DolbyAtmosMasterMetadataFile {
+        internal const int DynamicPositionThreshold = 16;
+
+        internal sealed class ObjectPositions {
+            readonly HashSet<Vector3> positions = new HashSet<Vector3>();
+            internal int DistinctCount => positions.Count;
+            internal Vector3 Last { get; private set; }
+
+            internal void Add(Vector3 position) {
+                if (positions.Count < DynamicPositionThreshold) {
+                    positions.Add(position);
+                }
+                Last = position;
+            }
+        }
+
         /// <summary>
         /// Movement data for each dynamic object (bed channel object indices are null).
         /// </summary>
         public MovementTimeframe[][] Movement { get; }
+
+        internal ObjectPositions[] ExplicitPositions { get; }
 
         /// <summary>
         /// Parses the .metadata file of a Dolby Atmos Master Format export to internal data representations.
@@ -24,6 +41,7 @@ namespace Cavern.Format.Renderers.CoreAudioFormat {
             Dictionary<int, int> inverseMapping = InvertMapping(mapping);
             List<MovementTimeframe>[] movement = new List<MovementTimeframe>[mapping.Length];
             MovementTimeframe[] lastFrames = new MovementTimeframe[mapping.Length];
+            ExplicitPositions = new ObjectPositions[mapping.Length];
             for (int i = 0; i < mapping.Length; i++) {
                 movement[i] = new List<MovementTimeframe>();
             }
@@ -58,6 +76,9 @@ namespace Cavern.Format.Renderers.CoreAudioFormat {
                     rawPosition is string positionSource) {
                     string[] parts = positionSource[1..^1].Split(", ");
                     position = new Vector3(QMath.ParseFloat(parts[0]), QMath.ParseFloat(parts[2]), QMath.ParseFloat(parts[1]));
+                    if (float.IsFinite(position.X) && float.IsFinite(position.Y) && float.IsFinite(position.Z)) {
+                        (ExplicitPositions[id] ??= new ObjectPositions()).Add(position);
+                    }
                 }
 
                 float gain = lastFrames[id].gain;

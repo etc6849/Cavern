@@ -33,6 +33,7 @@ public class IntegratedAnalysisReport_Tests {
             stats.Update(block);
             stats.Update(block);
             PcmSamplePeakAnalysis peaks = new(listener, 64, layout);
+            peaks.SourceInventory = AtmosSourceInventory.Create(app.SelectedTrack.Renderer, false);
             PostRenderReport report = new(listener);
             report.Generate(stats, peaks);
 
@@ -51,10 +52,12 @@ public class IntegratedAnalysisReport_Tests {
             var quality = rows.Where(row => row["row_type"] == "quality").ToArray();
             CollectionAssert.AreEqual(expected, quality.Select(row => row["quality_metric_id"]).ToArray());
             var overall = rows.Single(row => row["row_type"] == "overall");
-            Assert.AreEqual(report.Beds.Count.ToString(), overall["bed_count"]);
-            Assert.AreEqual(report.DynamicObjects.ToString(), overall["dynamic_object_count"]);
-            Assert.AreEqual(report.UnusedTargets.ToString(), overall["unused_target_count"]);
+            Assert.AreEqual("1", overall["bed_count"]);
+            Assert.AreEqual("0", overall["dynamic_object_count"]);
+            Assert.AreEqual("0", overall["unused_target_count"]);
             Assert.IsTrue(overall["bed_positions"].Contains("Label"));
+            StringAssert.Contains(overall["source_inventory"], "FrontLeft");
+            Assert.AreEqual(75, header.Length);
             Assert.AreEqual("Fixture (Atmos).csv", Path.GetFileName(output));
         } finally {
             app.Reset();

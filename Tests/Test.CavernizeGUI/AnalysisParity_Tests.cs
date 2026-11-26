@@ -16,7 +16,7 @@ namespace Test.CavernizeGUI;
 [TestClass, DoNotParallelize]
 public class AnalysisParity_Tests {
     [TestMethod, Timeout(120000)]
-    public async Task GuiAndWindowsCliAgreeOnIntegratedAnalysisInBothLayouts() {
+    public async Task GuiAndWindowsCliAgreeOnIntegratedAnalysisInAllThreeLayouts() {
         string directory = Directory.CreateTempSubdirectory().FullName;
         try {
             foreach (string file in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "Fixtures"))) {
@@ -35,7 +35,7 @@ public class AnalysisParity_Tests {
             }
             string guiWork = Path.Combine(directory, "GUI workspace"), cliWork = Path.Combine(directory, "CLI workspace");
             string decoder = Environment.GetEnvironmentVariable("CAVERNIZE_V4_DECODER");
-            string[] layouts = ["5.1.6 with top sides", "5.1.2 side"];
+            string[] layouts = ["5.1.6 with top sides", "5.1.4", "5.1.2 side"];
             TaskCompletionSource rendered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             Thread gui = new(() => {
                 try {
@@ -64,11 +64,19 @@ public class AnalysisParity_Tests {
             foreach (string source in sources) {
                 string report = Path.ChangeExtension(source, ".csv");
                 string[] guiCsv = ReadCsvWithoutId(report);
-                Assert.AreEqual(2, guiCsv.Count(row => row.Split('	').Contains("overall")));
-                Dictionary<string, string> guiJson = ReadEvidence(guiWork, source);
+                string[] overall = guiCsv.Where(row => row.Split('\t').Contains("overall")).ToArray();
+                Assert.AreEqual(layouts.Length, overall.Length);
+                foreach (string row in overall) {
+                    JsonObject inventory = JsonNode.Parse(row.Split('\t')[^1]).AsObject();
+                    bool direct = Path.GetExtension(source) == ".atmos";
+                    Assert.AreEqual(direct ? "damf" : "decoded_damf", inventory["Provenance"].GetValue<string>());
+                    Assert.AreEqual(direct ? "FrontLeft" : "ScreenLFE", inventory["Beds"][0]["Channel"].GetValue<string>());
+                    Assert.AreEqual(direct ? 0 : 11, inventory["Objects"].AsArray().Count);
+                }
+                Dictionary<string, string> guiJson = ReadEvidence(guiWork, source, layouts.Length);
                 await RenderWithCli(source, layouts, cliWork, decoder);
                 CollectionAssert.AreEqual(guiCsv, ReadCsvWithoutId(report), source);
-                CollectionAssert.AreEquivalent(guiJson.ToArray(), ReadEvidence(cliWork, source).ToArray(), source);
+                CollectionAssert.AreEquivalent(guiJson.ToArray(), ReadEvidence(cliWork, source, layouts.Length).ToArray(), source);
             }
             Assert.IsFalse(Directory.EnumerateFiles(directory, "*.wav").Any());
         } finally {
@@ -133,7 +141,7 @@ public class AnalysisParity_Tests {
         return rows.ToArray();
     }
 
-    static Dictionary<string, string> ReadEvidence(string root, string source) {
+    static Dictionary<string, string> ReadEvidence(string root, string source, int layouts) {
         Dictionary<string, string> evidence = [];
         foreach (string path in Directory.GetFiles(root, "*-Verification.json", System.IO.SearchOption.AllDirectories)) {
             JsonObject json = JsonNode.Parse(File.ReadAllText(path)).AsObject();
@@ -143,7 +151,7 @@ public class AnalysisParity_Tests {
                 evidence.Add(json["LayoutId"].GetValue<string>(), json.ToJsonString());
             }
         }
-        Assert.AreEqual(2, evidence.Count);
+        Assert.AreEqual(layouts, evidence.Count);
         return evidence;
     }
 }

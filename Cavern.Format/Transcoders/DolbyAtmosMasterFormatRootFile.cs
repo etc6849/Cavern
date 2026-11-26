@@ -35,6 +35,9 @@ namespace Cavern.Format.Transcoders {
         /// </summary>
         public int BedChannelCount => bedIDs.Length;
 
+        // Keep the declared IDs for reporting. The V5 renderer's existing PCM/event mapping is independent of these labels.
+        internal IReadOnlyList<int?> DeclaredObjectIds { get; }
+
         /// <inheritdoc/>
         public string FileExtension => "atmos";
 
@@ -126,7 +129,8 @@ namespace Cavern.Format.Transcoders {
             }
 
             int expectedObjectCount = channelCount - Channels.Length;
-            objectCount = ParseObjectCount(presentation, expectedObjectCount);
+            DeclaredObjectIds = ParseObjects(presentation, expectedObjectCount);
+            objectCount = DeclaredObjectIds.Count;
             for (int i = 0; i < objectCount; i++) {
                 ObjectMapping[Channels.Length + i] = 10 + i;
             }
@@ -157,12 +161,12 @@ namespace Cavern.Format.Transcoders {
         }
 
         /// <summary>
-        /// Determine the object count from the root file.
+        /// Validate the object count and retain the declared IDs.
         /// </summary>
-        static int ParseObjectCount(YAMLObject presentation, int expectedObjectCount) {
+        static int?[] ParseObjects(YAMLObject presentation, int expectedObjectCount) {
             if (!presentation.TryGetValue("objects", out object rawObjects)) {
                 if (expectedObjectCount == 0) {
-                    return 0;
+                    return Array.Empty<int?>();
                 }
                 throw new CorruptionException(nameof(presentation));
             }
@@ -170,7 +174,7 @@ namespace Cavern.Format.Transcoders {
             if (rawObjects is string rawObjectText) {
                 if (rawObjectText == "[]") {
                     if (expectedObjectCount == 0) {
-                        return 0;
+                        return Array.Empty<int?>();
                     }
                     throw new CorruptionException(nameof(rawObjectText));
                 }
@@ -186,7 +190,13 @@ namespace Cavern.Format.Transcoders {
                 throw new CorruptionException($"{nameof(objects)}.Count");
             }
 
-            return objects.Count;
+            int?[] ids = new int?[objects.Count];
+            for (int i = 0; i < ids.Length; i++) {
+                if (objects[i].TryGetValue("ID", out object value) && value is string text && int.TryParse(text, out int id)) {
+                    ids[i] = id;
+                }
+            }
+            return ids;
         }
 
         /// <inheritdoc/>

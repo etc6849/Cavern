@@ -10,9 +10,8 @@ public class RenderReportStringsZH : RenderReportStrings {
     /// <inheritdoc/>
     protected override void ApplyTranslation() {
         Set("Defau", "渲染完成后，您可以在此处查看额外的轨道信息，例如实际对象使用统计。");
-        Set("ABeds", "实际包含的基础声道");
-        Set("AObjs", "实际包含的动态对象");
-        Set("FakeT", "未使用（虚假）渲染目标");
+        Set("ABeds", "编码的基础声道");
+        Set("FakeT", "无活动的对象源（解码 PCM 静音）");
         Set("PeaGa", "峰值音频帧电平");
         Set("RMSGa", "内容RMS电平");
         Set("MacDy", "宏观动态");

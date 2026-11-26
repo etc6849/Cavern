@@ -40,6 +40,7 @@ internal sealed class PcmSamplePeakAnalysis {
     internal string LayoutId { get; }
     internal string LayoutName { get; }
     internal PcmPeakDiagnostics Diagnostics { get; }
+    internal AtmosSourceInventory SourceInventory { get; set; }
     internal long ExpectedFrames { get; }
     internal Exception PreLimiterError { get; private set; }
     internal bool SourceVerified { get; private set; }

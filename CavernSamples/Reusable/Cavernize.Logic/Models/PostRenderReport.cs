@@ -1,8 +1,6 @@
 ﻿using System.Text;
 
 using Cavern;
-using Cavern.Channels;
-using Cavern.Format.Renderers;
 using Cavern.Utilities;
 
 using Cavernize.Logic.Language;
@@ -38,10 +36,7 @@ public sealed class PostRenderReport(Listener listener) {
     }
 
     internal sealed record QualityMetric(string Name, float? Db, string Grade, string Id = null);
-    internal sealed record BedPosition(ReferenceChannel Channel, System.Numerics.Vector3 Position);
-    internal IReadOnlyList<BedPosition> Beds { get; private set; } = Array.Empty<BedPosition>();
-    internal int DynamicObjects { get; private set; }
-    internal int UnusedTargets { get; private set; }
+    internal AtmosSourceInventory.Summary Sources { get; private set; }
     internal bool NoLfe { get; private set; }
     internal IReadOnlyList<QualityMetric> Quality { get; private set; } = Array.Empty<QualityMetric>();
 
@@ -50,21 +45,10 @@ public sealed class PostRenderReport(Listener listener) {
     /// </summary>
     public void Generate(RenderStats stats) => Generate(stats, null);
 
-    internal void Generate(RenderStats stats, PcmSamplePeakAnalysis peaks) {
-        int total = listener.ActiveSources.Count;
-        int dynamic = total - stats.GetSemiStaticCount() - stats.GetSuperStaticCount();
-
-        Beds = stats.GetStaticOrSemiStaticPositions().Select(x => x / Listener.EnvironmentSize)
-            .Select(x => new BedPosition(Renderer.ChannelFromPosition(x), x)).OrderBy(x => x.Channel).ToArray();
-
-        int unused = total - dynamic - Beds.Count;
-        if (unused < 0) {
-            dynamic += unused;
-            unused = 0;
-        }
-
-        DynamicObjects = dynamic;
-        UnusedTargets = unused;
+    internal void Generate(RenderStats stats, PcmSamplePeakAnalysis peaks, AtmosSourceInventory inventory = null) {
+        int attachedSourceSlots = listener.ActiveSources.Count;
+        Sources = (inventory ?? peaks?.SourceInventory)?.Describe(peaks?.ExpectedFrames ?? 0, attachedSourceSlots) ??
+            AtmosSourceInventory.Unavailable(stats, attachedSourceSlots);
         NoLfe = false;
         RenderReportStrings language = RenderReportStrings.Active;
         StringBuilder builder = new();
@@ -84,12 +68,7 @@ public sealed class PostRenderReport(Listener listener) {
             builder.Append(metric).Append(valueIs).AppendLine(db.ToString("0.00 dB"));
         }
 
-        builder.Append(language["ABeds"]).Append(valueIs).Append(Beds.Count);
-        if (Beds.Count != 0) {
-            builder.Append(" (").Append(string.Join(", ", Beds.Select(x => x.Channel))).Append(')');
-        }
-        builder.AppendLine().Append(language["AObjs"]).Append(valueIs).AppendLine(dynamic.ToString())
-            .Append(language["FakeT"]).Append(valueIs).AppendLine(unused.ToString());
+        AppendSourceInventory(builder, language);
 
         if (stats is RenderStatsEx statsEx) {
             float macrodynamics = QMath.GainToDb(statsEx.Macrodynamics),
@@ -147,6 +126,39 @@ public sealed class PostRenderReport(Listener listener) {
         AppendPeaks(builder, peaks);
         Report = builder.ToString();
     }
+
+    void AppendSourceInventory(StringBuilder builder, RenderReportStrings language) {
+        if (Sources.Beds == null) {
+            builder.AppendLine(language["UnknownInventory"]);
+            if (Sources.ObservedStationaryPositions.Count != 0) {
+                builder.Append(language["ObservedPositions"]).Append(valueIs)
+                    .AppendLine(string.Join(", ", Sources.ObservedStationaryPositions.Select(FormatPosition)));
+            }
+            return;
+        }
+
+        builder.AppendLine(language[Sources.Provenance == "decoded_damf" ? "DecodedInventory" : "DamfInventory"]);
+        builder.Append(language["ABeds"]).Append(valueIs).Append(Sources.Beds.Count);
+        if (Sources.Beds.Count != 0) {
+            builder.Append(" (").Append(string.Join(", ", Sources.Beds.Select(bed => bed.Channel))).Append(')');
+        }
+        builder.AppendLine().Append(language["EncodedObjects"]).Append(valueIs).AppendLine(Sources.Objects.Count.ToString());
+        foreach (string motion in new[] { "dynamic", "stationary", "semi_static", "unverified" }) {
+            builder.Append(language["Motion_" + motion]).Append(valueIs)
+                .AppendLine(Sources.Objects.Count(source => source.Motion == motion).ToString());
+        }
+        builder.Append(language["FakeT"]).Append(valueIs)
+            .AppendLine(Sources.InactiveSources?.ToString() ?? language["PcmNA"]);
+        foreach (var source in Sources.Objects) {
+            string id = source.DeclaredId?.ToString() ?? language["PcmNA"];
+            builder.AppendFormat(language["ObjectDetail"], id, source.RendererId, source.PcmSlot,
+                language["ObjectMotion_" + source.Motion], language["Activity_" + source.Activity],
+                FormatPosition(source.LastAuthoredPosition), FormatPosition(source.LastObservedPosition)).AppendLine();
+        }
+    }
+
+    static string FormatPosition(AtmosSourceInventory.Position position) => position == null ?
+        RenderReportStrings.Active["PcmNA"] : FormattableString.Invariant($"({position.X:R}, {position.Y:R}, {position.Z:R})");
 
     static void AppendPeaks(StringBuilder builder, PcmSamplePeakAnalysis peaks) {
         RenderReportStrings language = RenderReportStrings.Active;
